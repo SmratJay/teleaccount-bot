@@ -1,0 +1,13 @@
+python-telegram-bot==20.7
+telethon==1.33.1
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.23
+alembic==1.12.1
+python-dotenv==1.0.0
+requests==2.31.0
+pycryptodome==3.19.0
+aiofiles==23.2.1
+asyncpg==0.29.0
+redis==5.0.1
+cryptography==41.0.8
+phonenumbers==8.13.26

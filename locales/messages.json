@@ -1,0 +1,92 @@
+{
+  "en": {
+    "welcome_message": "🤖 **Welcome to Telegram Account Bot!**\n\nHello {name}! 👋\n\nThis bot helps you manage Telegram accounts securely with advanced features.",
+    "lfg_start": "🚀 **Let's Get Started! (LFG)**\n\nWelcome to the account setup process!",
+    "captcha_question": "To ensure security, please solve this simple captcha:\n\n❓ **Question:** {question}",
+    "phone_input": "**Step 2: Phone Number** 📱\n\nPlease enter the phone number for the Telegram account you want to add.",
+    "code_sent": "✅ **Code Sent Successfully!**\n\nA verification code has been sent to your phone.",
+    "login_successful": "✅ **Login Successful!**\n\n🔄 Setting up your account security...",
+    "account_complete": "🎉 **Account Setup Complete!**\n\n✅ **Account successfully added and secured!**",
+    "balance_title": "💰 **Your Balance Overview**",
+    "accounts_title": "📱 **Your Accounts ({count})**",
+    "withdrawal_title": "💸 **Withdrawal Request**",
+    "admin_dashboard": "🛡️ **Admin Dashboard**",
+    "system_announcement": "📢 **System Announcement**",
+    "buttons": {
+      "lfg": "✅ Let's Get Started (LFG)",
+      "balance": "💰 Check Balance", 
+      "accounts": "📱 My Accounts",
+      "withdraw": "💸 Withdraw Funds",
+      "help": "❓ Help & Support",
+      "cancel": "❌ Cancel",
+      "refresh": "🔄 Refresh",
+      "support": "📞 Contact Support"
+    },
+    "errors": {
+      "invalid_phone": "❌ **Invalid phone number format!**",
+      "invalid_code": "❌ **Invalid Code**",
+      "insufficient_balance": "❌ **Insufficient Balance**",
+      "access_denied": "❌ Access denied. Admin privileges required."
+    }
+  },
+  "es": {
+    "welcome_message": "🤖 **¡Bienvenido al Bot de Cuenta de Telegram!**\n\n¡Hola {name}! 👋\n\nEste bot te ayuda a gestionar cuentas de Telegram de forma segura con características avanzadas.",
+    "lfg_start": "🚀 **¡Empezamos! (LFG)**\n\n¡Bienvenido al proceso de configuración de cuenta!",
+    "captcha_question": "Para garantizar la seguridad, resuelve este captcha simple:\n\n❓ **Pregunta:** {question}",
+    "phone_input": "**Paso 2: Número de Teléfono** 📱\n\nIngresa el número de teléfono para la cuenta de Telegram que quieres agregar.",
+    "code_sent": "✅ **¡Código Enviado Exitosamente!**\n\nSe ha enviado un código de verificación a tu teléfono.",
+    "login_successful": "✅ **¡Inicio de Sesión Exitoso!**\n\n🔄 Configurando la seguridad de tu cuenta...",
+    "account_complete": "🎉 **¡Configuración de Cuenta Completa!**\n\n✅ **¡Cuenta agregada y asegurada exitosamente!**",
+    "balance_title": "💰 **Resumen de tu Saldo**",
+    "accounts_title": "📱 **Tus Cuentas ({count})**",
+    "withdrawal_title": "💸 **Solicitud de Retiro**",
+    "admin_dashboard": "🛡️ **Panel de Administrador**",
+    "system_announcement": "📢 **Anuncio del Sistema**",
+    "buttons": {
+      "lfg": "✅ Empezar (LFG)",
+      "balance": "💰 Ver Saldo",
+      "accounts": "📱 Mis Cuentas", 
+      "withdraw": "💸 Retirar Fondos",
+      "help": "❓ Ayuda y Soporte",
+      "cancel": "❌ Cancelar",
+      "refresh": "🔄 Actualizar",
+      "support": "📞 Contactar Soporte"
+    },
+    "errors": {
+      "invalid_phone": "❌ **¡Formato de número de teléfono inválido!**",
+      "invalid_code": "❌ **Código Inválido**",
+      "insufficient_balance": "❌ **Saldo Insuficiente**",
+      "access_denied": "❌ Acceso denegado. Se requieren privilegios de administrador."
+    }
+  },
+  "ru": {
+    "welcome_message": "🤖 **Добро пожаловать в бота управления аккаунтами Telegram!**\n\nПривет, {name}! 👋\n\nЭтот бот поможет вам безопасно управлять аккаунтами Telegram с расширенными функциями.",
+    "lfg_start": "🚀 **Начинаем! (LFG)**\n\nДобро пожаловать в процесс настройки аккаунта!",
+    "captcha_question": "Для обеспечения безопасности решите эту простую капчу:\n\n❓ **Вопрос:** {question}",
+    "phone_input": "**Шаг 2: Номер телефона** 📱\n\nВведите номер телефона для аккаунта Telegram, который хотите добавить.",
+    "code_sent": "✅ **Код успешно отправлен!**\n\nКод подтверждения отправлен на ваш телефон.",
+    "login_successful": "✅ **Успешный вход!**\n\n🔄 Настройка безопасности аккаунта...",
+    "account_complete": "🎉 **Настройка аккаунта завершена!**\n\n✅ **Аккаунт успешно добавлен и защищен!**",
+    "balance_title": "💰 **Обзор вашего баланса**",
+    "accounts_title": "📱 **Ваши аккаунты ({count})**",
+    "withdrawal_title": "💸 **Запрос на вывод**",
+    "admin_dashboard": "🛡️ **Панель администратора**",
+    "system_announcement": "📢 **Системное объявление**",
+    "buttons": {
+      "lfg": "✅ Начать (LFG)",
+      "balance": "💰 Проверить баланс",
+      "accounts": "📱 Мои аккаунты",
+      "withdraw": "💸 Вывести средства", 
+      "help": "❓ Помощь и поддержка",
+      "cancel": "❌ Отмена",
+      "refresh": "🔄 Обновить",
+      "support": "📞 Связаться с поддержкой"
+    },
+    "errors": {
+      "invalid_phone": "❌ **Неверный формат номера телефона!**",
+      "invalid_code": "❌ **Неверный код**",
+      "insufficient_balance": "❌ **Недостаточно средств**",
+      "access_denied": "❌ Доступ запрещен. Требуются права администратора."
+    }
+  }
+}
