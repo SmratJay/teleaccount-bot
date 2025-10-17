@@ -1,48 +1,33 @@
 """
-Keyboard Layout Fix for Real Handlers
-This will provide the exact layout matching the screenshot
+Keyboard layout fix for Telegram Bot - provides consistent menu layouts
 """
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 def get_main_menu_keyboard():
-    """Get the main menu keyboard with exact layout from screenshot."""
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    
+    """Returns the main menu keyboard layout with exact user specification."""
     keyboard = [
-        # Top row - LFG (Sell) full width
-        [
-            InlineKeyboardButton("🚀 LFG (Sell)", callback_data="start_real_selling")
-        ],
-        # Row 2: Account Details | Withdraw  
+        # First row - LFG (Full width button)
+        [InlineKeyboardButton("🚀 LFG (Let's F***ing Go)", callback_data="start_real_selling")],
+        
+        # 3x2 Grid starts here
+        # Row 1 of grid - Account Details and Balance
         [
             InlineKeyboardButton("📋 Account Details", callback_data="account_details"),
-            InlineKeyboardButton("💸 Withdraw", callback_data="withdraw_menu")
+            InlineKeyboardButton("💰 Balance", callback_data="check_balance")
         ],
-        # Row 3: System Capacity | Language
+        # Row 2 of grid - Withdraw and Language  
         [
-            InlineKeyboardButton("📊 System Capacity", callback_data="system_capacity"),
+            InlineKeyboardButton("� Withdraw", callback_data="withdraw_menu"),
             InlineKeyboardButton("🌍 Language", callback_data="language_menu")
         ],
-        # Row 4: Balance | Status
+        # Row 3 of grid - System Capacity and Status
         [
-            InlineKeyboardButton("💰 Balance", callback_data="check_balance"),
-            InlineKeyboardButton("📈 Status", callback_data="status")
+            InlineKeyboardButton("📊 System Capacity", callback_data="system_capacity"),
+            InlineKeyboardButton("📊 Status", callback_data="status")
         ],
-        # Bottom row - Support full width
-        [
-            InlineKeyboardButton("🆘 Support", url="https://t.me/BujhlamNaKiHolo")
-        ]
+        
+        # Last row - Support (Full width button)
+        [InlineKeyboardButton("🆘 Support", url="https://t.me/BujhlamNaKiHolo")]
     ]
     
     return InlineKeyboardMarkup(keyboard)
-
-# Test the layout
-if __name__ == "__main__":
-    keyboard = get_main_menu_keyboard()
-    print("✅ Keyboard layout created successfully!")
-    print("Layout structure:")
-    print("Row 1: [🚀 LFG (Sell)]")
-    print("Row 2: [📋 Account Details] [💸 Withdraw]")  
-    print("Row 3: [📊 System Capacity] [🌍 Language]")
-    print("Row 4: [💰 Balance] [📈 Status]")
-    print("Row 5: [🆘 Support]")
-    print("\nThis matches the client's requested layout exactly!")

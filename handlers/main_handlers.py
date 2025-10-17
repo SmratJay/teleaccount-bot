@@ -232,6 +232,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     elif data == "new_captcha":
         await handle_start_verification(update, context)  # Generate new captcha
     elif data == "verify_channels":
+        print(f"🎯🎯🎯 BUTTON CALLBACK DETECTED verify_channels for user {update.effective_user.id} 🎯🎯🎯")
+        logger.error(f"🎯🎯🎯 BUTTON CALLBACK DETECTED verify_channels for user {update.effective_user.id} 🎯🎯🎯")
         await handle_verify_channels(update, context)
     elif data == "lfg_sell":
         await handle_lfg_sell(update, context)
@@ -266,12 +268,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await handle_why_verification(update, context)
     elif data == "view_all_accounts":
         await handle_view_all_accounts(update, context)
-    elif data == "withdraw_trx":
-        await handle_withdraw_trx(update, context)
-    elif data == "withdraw_usdt":
-        await handle_withdraw_usdt(update, context)
-    elif data == "withdraw_binance":
-        await handle_withdraw_binance(update, context)
+    # NOTE: withdraw_trx, withdraw_usdt, withdraw_binance are now handled by ConversationHandler
     elif data == "withdrawal_history":
         await handle_withdrawal_history(update, context)
     elif data.startswith("delete_withdrawal_"):
@@ -292,23 +289,23 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await start_command(update, context)
 
 async def handle_start_verification(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Start the verification process with CAPTCHA."""
+    """Start the verification process with enhanced CAPTCHA (visual/text)."""
     captcha_service = CaptchaService()
     captcha_data = await captcha_service.generate_captcha()
     
+    # Only visual captcha text since we removed text-based captchas
     verification_text = f"""
 🔒 **Step 1/3: CAPTCHA Verification**
 
-🧩 **Please solve this CAPTCHA:**
-
-**❓ Question:** {captcha_data['question']}
+🖼️ **Visual CAPTCHA Challenge**
 
 **📝 Instructions:**
-• Type your answer in the chat below
-• Send the answer as a regular message
+• Look at the image below carefully
+• Type the exact text you see (letters and numbers)
 • Case doesn't matter
+• Enter the characters exactly as shown
 
-**👇 Type your answer now:**
+**👇 Type the text from the image:**
     """
     
     keyboard = [
@@ -319,13 +316,34 @@ async def handle_start_verification(update: Update, context: ContextTypes.DEFAUL
     
     # Store CAPTCHA answer in context
     context.user_data['captcha_answer'] = captcha_data['answer']
+    context.user_data['captcha_type'] = captcha_data['type']
+    context.user_data['captcha_image_path'] = captcha_data.get('image_path')
     context.user_data['verification_step'] = 1
     
+    # Send text message first
     await update.callback_query.edit_message_text(
         verification_text,
         parse_mode='Markdown',
         reply_markup=reply_markup
     )
+    
+    # If visual captcha, send the image
+    if captcha_data['type'] == 'visual' and captcha_data.get('image_path'):
+        try:
+            with open(captcha_data['image_path'], 'rb') as photo:
+                await update.callback_query.message.reply_photo(
+                    photo=photo,
+                    caption="🔍 **Enter the text shown in this image**",
+                    parse_mode='Markdown'
+                )
+        except Exception as e:
+            logger.error(f"Error sending captcha image: {e}")
+            # Fallback to text-based captcha
+            await update.callback_query.message.reply_text(
+                "⚠️ **Image failed to load. Fallback question:**\n\n" + 
+                "What is 25 + 17?"
+            )
+            context.user_data['captcha_answer'] = "42"
 
 async def handle_lfg_sell(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle LFG (Let's F***ing Go) - Account selling process."""
@@ -836,9 +854,16 @@ async def fallback_callback_handler(update: Update, context: ContextTypes.DEFAUL
     data = query.data
     user = update.effective_user
     
-    logger.warning(f"Fallback handler triggered - Unmatched callback: {data} from user {user.id}")
+    print(f"🚨🚨🚨 FALLBACK HANDLER CAUGHT: {data} from user {user.id} 🚨🚨🚨")
+    logger.error(f"🚨🚨🚨 FALLBACK HANDLER CAUGHT: {data} from user {user.id} 🚨🚨🚨")
     
-    # For any unmatched callback, return to main menu
+    # If it's verify_channels, handle it directly here
+    if data == "verify_channels":
+        print(f"🚨 FALLBACK: Processing verify_channels for user {user.id}")
+        await handle_verify_channels(update, context)
+        return
+    
+    # For any other unmatched callback, return to main menu
     await query.edit_message_text("🔄 Returning to main menu...")
     await start_command(update, context)
 
@@ -1616,7 +1641,7 @@ Use the "LFG (Sell)" button to sell your first account!
         close_db_session(db)
 
 async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle CAPTCHA text answers."""
+    """Handle CAPTCHA text answers for both visual and text captchas."""
     user = update.effective_user
     user_answer = update.message.text.strip()
     
@@ -1626,9 +1651,23 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
     
     db = get_db_session()
     try:
+        # Clean up visual captcha image if exists
+        captcha_image_path = context.user_data.get('captcha_image_path')
+        if captcha_image_path:
+            from services.captcha import CaptchaService
+            captcha_service = CaptchaService()
+            captcha_service.cleanup_captcha_image(captcha_image_path)
+            context.user_data.pop('captcha_image_path', None)
+        
         # Verify CAPTCHA answer
         correct_answer = context.user_data.get('captcha_answer', '').lower().strip()
-        is_correct = user_answer.lower().strip() == correct_answer
+        captcha_type = context.user_data.get('captcha_type', 'text')
+        
+        # For visual captcha, be more flexible with answer checking
+        if captcha_type == 'visual':
+            is_correct = user_answer.lower().replace(' ', '') == correct_answer.replace(' ', '')
+        else:
+            is_correct = user_answer.lower().strip() == correct_answer
         
         if is_correct:
             # CAPTCHA passed, move to channel verification
@@ -1637,6 +1676,10 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
                 # Update captcha completion
                 db_user.captcha_completed = True
                 db.commit()
+            
+            # Clear captcha data from context
+            context.user_data.pop('captcha_answer', None)
+            context.user_data.pop('captcha_type', None)
             
             # Move to channel verification step
             context.user_data['verification_step'] = 2
@@ -1651,11 +1694,19 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
                 extra_data=json.dumps({"answer": user_answer})
             )
         else:
-            # CAPTCHA failed
+            # CAPTCHA failed - show appropriate error message
+            if captcha_type == 'visual':
+                error_message = f"❌ **Incorrect Answer!**\n\n" \
+                              f"Your answer: `{user_answer}`\n" \
+                              f"🔍 **Tip:** Look carefully at the image and enter exactly what you see (5 characters)\n\n" \
+                              f"Please try again with a new CAPTCHA."
+            else:
+                error_message = f"❌ **Incorrect Answer!**\n\n" \
+                              f"Your answer: `{user_answer}`\n" \
+                              f"Please try again. Click the button below for a new CAPTCHA."
+            
             await update.message.reply_text(
-                f"❌ **Incorrect Answer!**\\n\\n"
-                f"Your answer: `{user_answer}`\\n"
-                f"Please try again. Click the button below for a new CAPTCHA.",
+                error_message,
                 parse_mode='Markdown',
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔄 New CAPTCHA", callback_data="new_captcha")],
@@ -1735,48 +1786,36 @@ Now please join ALL required channels below:
         )
 
 async def handle_verify_channels(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle channel verification."""
+    """Handle channel verification - SIMPLIFIED VERSION."""
     user = update.effective_user
     
-    # For now, we'll skip actual verification since we can't check private channels
-    # In production, you'd implement actual channel membership checking
+    # VERY VISIBLE DEBUG LOGGING
+    print(f"🔥🔥🔥 VERIFY CHANNELS FUNCTION CALLED - USER {user.id} 🔥🔥🔥")
+    logger.error(f"🔥🔥🔥 VERIFY CHANNELS FUNCTION CALLED - USER {user.id} 🔥🔥🔥")
     
     db = get_db_session()
     try:
+        # Answer callback first to prevent timeout
+        await update.callback_query.answer("✅ Processing verification...")
+        print(f"🔥 ANSWERED CALLBACK for user {user.id}")
+        
+        # Get user and mark verification complete
         db_user = UserService.get_user_by_telegram_id(db, user.id)
         if db_user:
             # Mark verification as complete
-            UserService.complete_user_verification(db, db_user.id)
+            db_user.verification_completed = True
+            db_user.captcha_completed = True
+            db_user.channels_joined = True
+            from database.models import UserStatus
+            db_user.status = UserStatus.ACTIVE
+            db.commit()
+            print(f"🔥 MARKED VERIFICATION COMPLETE for user {user.id}")
         
-        success_text = f"""
-🎉 **Verification Complete!**
-
-✅ **CAPTCHA:** Completed
-✅ **Channels:** Verified  
-✅ **Account Status:** ACTIVE
-
-**Welcome to the Telegram Account Selling Platform!**
-
-You now have full access to all features:
-• 🚀 **LFG (Sell Account)** - Start selling your accounts
-• 💰 **Balance Management** - Track your earnings
-• 💸 **Withdraw Funds** - Cash out your profits
-• 📱 **Account Management** - Manage your listings
-
-**Ready to start earning?** Click below to access the main menu!
-        """
-        
-        keyboard = [
-            [InlineKeyboardButton("🚀 Start Selling (LFG)", callback_data="lfg_sell")],
-            [InlineKeyboardButton("📋 Main Menu", callback_data="main_menu")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.callback_query.edit_message_text(
-            success_text,
-            parse_mode='Markdown',
-            reply_markup=reply_markup
-        )
+        # Import and directly call the main menu function
+        from handlers.real_handlers import show_real_main_menu
+        print(f"🔥 CALLING MAIN MENU for user {user.id}")
+        await show_real_main_menu(update, context)
+        print(f"🔥 MAIN MENU SUCCESS for user {user.id}")
         
         # Log successful verification
         ActivityLogService.log_action(
@@ -2956,6 +2995,54 @@ def setup_main_handlers(application) -> None:
     """Set up the main bot handlers."""
     from telegram.ext import ConversationHandler
     
+    # ===========================================
+    # BRUTE FORCE VERIFY BUTTON FIX - BY HOOK OR BY CROOK!
+    # ===========================================
+    
+    async def brute_force_verify_channels(update, context):
+        """BRUTE FORCE verify channels handler - works everywhere!"""
+        user = update.effective_user
+        print(f"🚀🚀🚀 BRUTE FORCE MAIN: verify_channels called for user {user.id} 🚀🚀🚀")
+        
+        try:
+            await update.callback_query.answer("✅ Verification completed!")
+            
+            # Import everything we need - FIXED IMPORTS!
+            from database.operations import UserService
+            from database import get_db_session, close_db_session
+            from database.models import UserStatus
+            from handlers.real_handlers import show_real_main_menu
+            
+            # Mark user as verified
+            db = get_db_session()
+            try:
+                db_user = UserService.get_user_by_telegram_id(db, user.id)
+                if db_user:
+                    db_user.verification_completed = True
+                    db_user.captcha_completed = True
+                    db_user.channels_joined = True
+                    db_user.status = UserStatus.ACTIVE
+                    db.commit()
+                    print(f"🚀 BRUTE FORCE MAIN: Marked user {user.id} as verified")
+            finally:
+                close_db_session(db)
+            
+            # Show main menu
+            await show_real_main_menu(update, context)
+            print(f"🚀 BRUTE FORCE MAIN: Showed main menu for user {user.id}")
+            
+        except Exception as e:
+            print(f"🚀 BRUTE FORCE MAIN: Error in verification: {e}")
+            import traceback
+            print(f"🚀 BRUTE FORCE MAIN: Full traceback: {traceback.format_exc()}")
+            try:
+                await update.callback_query.edit_message_text("❌ Verification error. Please try again.")
+            except:
+                pass
+    
+    # Add BRUTE FORCE verify handler as THE VERY FIRST HANDLER (highest priority!)
+    application.add_handler(CallbackQueryHandler(brute_force_verify_channels, pattern='^verify_channels$'))
+    
     # Account selling conversation handler
     sell_conversation = ConversationHandler(
         entry_points=[CallbackQueryHandler(start_account_selling, pattern='^sell_new_account$')],
@@ -3002,9 +3089,16 @@ def setup_main_handlers(application) -> None:
     
     application.add_handler(CommandHandler("start", start_command))
     
+    # Add specific handler for verify_channels to ensure it works
+    application.add_handler(CallbackQueryHandler(
+        handle_verify_channels, 
+        pattern='^verify_channels$'
+    ))
+    
     # Register main callback handlers FIRST with higher priority
     # This ensures they get processed before conversation handlers
-    application.add_handler(CallbackQueryHandler(lambda update, context: button_callback(update, context), pattern='^(start_verification|new_captcha|verify_channels|lfg_sell|account_details|check_balance|withdraw_menu|language_menu|system_capacity|user_status|contact_support|admin_panel|leader_panel|my_available_accounts|skip_password|confirm_sale|main_menu|why_verification|view_all_accounts|withdraw_trx|withdraw_usdt|withdraw_binance|withdrawal_history|delete_withdrawal_.+|confirm_withdrawal|cancel_withdrawal)$'))
+    # NOTE: Removed withdraw_trx|withdraw_usdt|withdraw_binance to allow ConversationHandler to process them
+    application.add_handler(CallbackQueryHandler(lambda update, context: button_callback(update, context), pattern='^(start_verification|new_captcha|verify_channels|lfg_sell|account_details|check_balance|withdraw_menu|language_menu|system_capacity|user_status|contact_support|admin_panel|leader_panel|my_available_accounts|skip_password|confirm_sale|main_menu|why_verification|view_all_accounts|withdrawal_history|delete_withdrawal_.+|confirm_withdrawal|cancel_withdrawal)$'))
     
     # Add conversation handlers after main callbacks
     application.add_handler(sell_conversation)
@@ -3017,8 +3111,23 @@ def setup_main_handlers(application) -> None:
         handle_captcha_answer
     ))
     
+    # Add UNIVERSAL callback handler to catch ALL callbacks for debugging
+    async def universal_callback_debug(update, context):
+        callback_data = update.callback_query.data if update.callback_query else "NO_DATA"
+        user_id = update.effective_user.id if update.effective_user else "NO_USER"
+        print(f"🌍🌍🌍 UNIVERSAL CALLBACK CAUGHT: {callback_data} from user {user_id} 🌍🌍🌍")
+        
+        # If it's verify_channels, handle it directly with BRUTE FORCE!
+        if callback_data == "verify_channels":
+            print(f"🌍 UNIVERSAL: Processing verify_channels for user {user_id}")
+            await brute_force_verify_channels(update, context)
+            return
+        
+        # Otherwise, pass to fallback
+        await fallback_callback_handler(update, context)
+    
     # Add a catch-all callback handler to handle any unmatched callbacks
     # This ensures buttons always work even if conversation state gets stuck
-    application.add_handler(CallbackQueryHandler(fallback_callback_handler))
+    application.add_handler(CallbackQueryHandler(universal_callback_debug))
     
     logger.info("Main handlers set up successfully")

@@ -11,12 +11,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Database URL - Support both PostgreSQL and SQLite
-db_user = os.getenv('DB_USER')
-if db_user == 'sqlite':
-    # SQLite configuration for Windows
-    DATABASE_URL = f"sqlite:///{os.getenv('DB_NAME')}"
+# Priority: DATABASE_URL (Heroku) -> Manual config -> SQLite fallback
+DATABASE_URL = os.getenv('DATABASE_URL')
+if DATABASE_URL:
+    # Heroku PostgreSQL - fix postgresql:// to postgresql://
+    if DATABASE_URL.startswith('postgres://'):
+        DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+elif os.getenv('DB_USER') == 'sqlite':
+    # SQLite configuration for local development
+    DATABASE_URL = f"sqlite:///{os.getenv('DB_NAME', 'teleaccount_bot.db')}"
 else:
-    # PostgreSQL configuration for production
+    # PostgreSQL configuration for manual setup
     DATABASE_URL = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
 
 # Create engine with connection pooling
@@ -70,3 +75,16 @@ class DatabaseManager:
 
 # Global database manager instance
 db_manager = DatabaseManager()
+
+def init_db():
+    """Initialize database - create all tables. Used by Heroku release phase."""
+    try:
+        print("🚀 Initializing database tables...")
+        db_manager.create_all_tables()
+        print("✅ Database tables created successfully!")
+        return True
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
+        return False

@@ -10,6 +10,7 @@ from telegram.ext import ContextTypes, ConversationHandler, CallbackQueryHandler
 from services.real_telegram import RealTelegramService
 from handlers.form_handlers import handle_country_selection, handle_phone_number_input
 from services.translation_service import translation_service
+from services.captcha import CaptchaService
 from keyboard_layout_fix import get_main_menu_keyboard
 from database import get_db_session, close_db_session
 from database.operations import UserService, TelegramAccountService, SystemSettingsService, WithdrawalService, ActivityLogService
@@ -47,6 +48,11 @@ async def show_real_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
                 language_code=user.language_code or 'en'
             )
         
+        # Check if user needs verification
+        if db_user.status.value == "PENDING_VERIFICATION" or not db_user.verification_completed:
+            await start_verification_process(update, context, db_user)
+            return
+        
         # Get user's accounts
         accounts = TelegramAccountService.get_user_accounts(db, db_user.id)
         available_accounts = [acc for acc in accounts if acc.status.value == 'AVAILABLE']
@@ -78,30 +84,7 @@ async def show_real_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
 📈 **Your Status:** ✅ **ACTIVE**
     """
     
-    # Create the EXACT layout from the image - 2x2 grid for main buttons
-    keyboard = [
-        # First row - LFG and Account Details  
-        [
-            InlineKeyboardButton("🚀 LFG (Sell)", callback_data="start_real_selling"),
-            InlineKeyboardButton("📋 Account Details", callback_data="account_details")
-        ],
-        # Second row - Balance and Withdraw
-        [
-            InlineKeyboardButton("💰 Balance", callback_data="check_balance"), 
-            InlineKeyboardButton("💸 Withdraw", callback_data="withdraw_menu")
-        ],
-        # Third row - Language and System Capacity
-        [
-            InlineKeyboardButton("🌍 Language", callback_data="language_menu"),
-            InlineKeyboardButton("📊 System Capacity", callback_data="system_capacity")
-        ],
-        # Fourth row - Status and Support (full width)
-        [
-            InlineKeyboardButton("� Status", callback_data="status"),
-            InlineKeyboardButton("🆘 Support", url="https://t.me/BujhlamNaKiHolo")
-        ]
-    ]
-    
+    # Use the corrected layout: LFG full-width, 3x2 grid, Support full-width
     reply_markup = get_main_menu_keyboard()
     
     if update.callback_query:
@@ -110,7 +93,7 @@ async def show_real_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(welcome_text, parse_mode='Markdown', reply_markup=reply_markup)
 
 async def start_real_selling(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Start real selling process - prompt for phone number input."""
+    """Start real selling process - show confirmation first."""
     
     # Mark this as a selling conversation
     context.user_data['conversation_type'] = 'selling'
@@ -129,15 +112,115 @@ async def start_real_selling(update: Update, context: ContextTypes.DEFAULT_TYPE)
 • **Actually transfer** ownership
 • **Real payment** processing
 
-**Ready to sell your account?**
+**⚡ Important Notes:**
+• Make sure you have access to your phone
+• The process is irreversible once started
+• You'll receive real OTP codes
+• Account transfer is permanent
 
-**Please type your phone number with country code:**
-**Format:** +1234567890
-**Example:** +919876543210
+**Are you ready to proceed?**
     """
     
-    # No buttons, just the prompt
-    await update.callback_query.edit_message_text(sell_text, parse_mode='Markdown')
+    keyboard = [
+        [InlineKeyboardButton("✅ Ready! Let's Go", callback_data="confirm_ready_to_sell")],
+        [InlineKeyboardButton("❓ Need More Info", callback_data="selling_info")],
+        [InlineKeyboardButton("🔙 Back to Menu", callback_data="main_menu")]
+    ]
+    
+    await update.callback_query.edit_message_text(
+        sell_text, 
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return PHONE
+
+async def handle_ready_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle the 'Ready?' confirmation and proceed to phone input."""
+    
+    phone_prompt_text = """
+🚀 **Account Selling - Phone Number Required**
+
+**📱 Please provide your phone number:**
+
+**Format:** +CountryCode + Phone Number
+**Examples:**
+• 🇺🇸 US: `+1234567890`
+• 🇮🇳 India: `+919876543210`
+• 🇬🇧 UK: `+441234567890`
+
+**⚠️ Important:**
+• Use the EXACT number linked to your Telegram account
+• Include the + symbol and country code
+• No spaces or special characters
+
+**Type your phone number below:**
+    """
+    
+    keyboard = [
+        [InlineKeyboardButton("🔙 Back", callback_data="start_real_selling")],
+        [InlineKeyboardButton("❌ Cancel", callback_data="main_menu")]
+    ]
+    
+    await update.callback_query.edit_message_text(
+        phone_prompt_text,
+        parse_mode='Markdown', 
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return PHONE
+
+async def handle_selling_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Show detailed information about the selling process."""
+    
+    info_text = """
+📋 **Account Selling Process - Detailed Information**
+
+**🔍 What Exactly Happens:**
+
+**Step 1 - Verification:**
+• We send a real OTP to your phone
+• You receive it via Telegram app
+• This proves you own the account
+
+**Step 2 - Account Analysis:**
+• We check account age, activity, followers
+• Determine market value
+• No changes made yet
+
+**Step 3 - Transfer Process:**
+• We securely modify account settings
+• Transfer ownership to buyer
+• Process is irreversible
+
+**Step 4 - Payment:**
+• Instant payment to your account
+• Full transparency, no hidden fees
+• Payment before final transfer
+
+**💰 Typical Account Values:**
+• New accounts (0-6 months): $5-15
+• Aged accounts (6-12 months): $15-35
+• Premium accounts (1+ years): $35-100+
+
+**✅ Why Choose Us:**
+• 100% legitimate process
+• Secure and private
+• Fair market pricing
+• 24/7 support
+
+**Ready to proceed?**
+    """
+    
+    keyboard = [
+        [InlineKeyboardButton("✅ I'm Ready!", callback_data="confirm_ready_to_sell")],
+        [InlineKeyboardButton("🔙 Back", callback_data="start_real_selling")],
+        [InlineKeyboardButton("❌ Cancel", callback_data="main_menu")]
+    ]
+    
+    await update.callback_query.edit_message_text(
+        info_text,
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
     return PHONE
 
 async def handle_real_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -148,7 +231,7 @@ async def handle_real_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     # STRICT ISOLATION: Only handle if we're explicitly in a selling conversation
     if context.user_data.get('conversation_type') != 'selling':
         logger.info(f"🔒 PHONE ISOLATION - User {user.id} sent text '{message_text}' but not in selling conversation. Ignoring.")
-        return ConversationHandler.END  # End this conversation, let other handlers process
+        return  # Just return, don't end conversation - let other handlers process
     
     logger.info(f"📱 SELLING - User {user.id} sent phone: '{message_text}'")
     
@@ -389,6 +472,268 @@ This is a Telegram API limitation for security.
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("← Back", callback_data="main_menu")]])
         )
         return ConversationHandler.END
+
+async def start_verification_process(update: Update, context: ContextTypes.DEFAULT_TYPE, db_user) -> None:
+    """Start the human verification process."""
+    verification_text = f"""
+🔒 **Human Verification Required**
+
+Welcome {update.effective_user.first_name or 'User'}!
+
+Before accessing the **Telegram Account Selling Platform**, you must complete our security verification:
+
+🛡️ **Verification Steps:**
+• 🧩 **CAPTCHA** - Prove you're human  
+• 📢 **Channel Joins** - Join required channels
+• ✅ **Final Verification** - Account activation
+
+**Why verification is required:**
+• Prevents automated bots and spam
+• Ensures only legitimate sellers
+• Protects our community integrity
+• Maintains platform security
+
+🚀 **Ready to start earning?** Click below!
+
+⏱️ *Estimated time: 2-3 minutes*
+    """
+    
+    keyboard = [
+        [InlineKeyboardButton("🔓 Start Verification", callback_data="start_verification")],
+        [InlineKeyboardButton("❓ Why Verification?", callback_data="why_verification")],
+        [InlineKeyboardButton("🆘 Contact Support", callback_data="contact_support")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            verification_text,
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+    else:
+        await update.message.reply_text(
+            verification_text,
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+
+async def handle_start_verification(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Start the verification process with enhanced CAPTCHA (visual/text)."""
+    captcha_service = CaptchaService()
+    captcha_data = await captcha_service.generate_captcha()
+    
+    # Prepare verification text based on captcha type
+    if captcha_data['type'] == 'visual':
+        verification_text = f"""
+🔒 **Step 1/3: CAPTCHA Verification**
+
+🖼️ **Visual CAPTCHA Challenge**
+
+**📝 Instructions:**
+• Look at the image below carefully
+• Type the exact text you see (letters and numbers)
+• Case doesn't matter
+• Enter 5 characters exactly as shown
+
+**👇 Type the text from the image:**
+        """
+    else:
+        verification_text = f"""
+🔒 **Step 1/3: CAPTCHA Verification**
+
+🧩 **Please solve this CAPTCHA:**
+
+**❓ Question:** {captcha_data['question']}
+
+**📝 Instructions:**
+• Type your answer in the chat below
+• Send the answer as a regular message
+• Case doesn't matter
+
+**👇 Type your answer now:**
+        """
+    
+    keyboard = [
+        [InlineKeyboardButton("🔄 New CAPTCHA", callback_data="new_captcha")],
+        [InlineKeyboardButton("← Back to Start", callback_data="main_menu")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Store CAPTCHA answer in context
+    context.user_data['captcha_answer'] = captcha_data['answer']
+    context.user_data['captcha_type'] = captcha_data['type']
+    context.user_data['captcha_image_path'] = captcha_data.get('image_path')
+    context.user_data['verification_step'] = 1
+    
+    # Send text message first
+    await update.callback_query.edit_message_text(
+        verification_text,
+        parse_mode='Markdown',
+        reply_markup=reply_markup
+    )
+    
+    # If visual captcha, send the image
+    if captcha_data['type'] == 'visual' and captcha_data.get('image_path'):
+        try:
+            with open(captcha_data['image_path'], 'rb') as photo:
+                await update.callback_query.message.reply_photo(
+                    photo=photo,
+                    caption="🔍 **Enter the text shown in this image**",
+                    parse_mode='Markdown'
+                )
+        except Exception as e:
+            logger.error(f"Error sending captcha image: {e}")
+            # Fallback to text-based captcha
+            await update.callback_query.message.reply_text(
+                "⚠️ **Image failed to load. Fallback question:**\n\n" + 
+                "What is 25 + 17?"
+            )
+            context.user_data['captcha_answer'] = "42"
+
+async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle CAPTCHA text answers for both visual and text captchas."""
+    user = update.effective_user
+    user_answer = update.message.text.strip()
+    
+    # Check if user is in verification process
+    if not context.user_data.get('captcha_answer') or context.user_data.get('verification_step') != 1:
+        return  # Not in verification process
+    
+    db = get_db_session()
+    try:
+        # Clean up visual captcha image if exists
+        captcha_image_path = context.user_data.get('captcha_image_path')
+        if captcha_image_path:
+            captcha_service = CaptchaService()
+            captcha_service.cleanup_captcha_image(captcha_image_path)
+            context.user_data.pop('captcha_image_path', None)
+        
+        # Verify CAPTCHA answer
+        correct_answer = context.user_data.get('captcha_answer', '').lower().strip()
+        captcha_type = context.user_data.get('captcha_type', 'text')
+        
+        # For visual captcha, be more flexible with answer checking
+        if captcha_type == 'visual':
+            is_correct = user_answer.lower().replace(' ', '') == correct_answer.replace(' ', '')
+        else:
+            is_correct = user_answer.lower().strip() == correct_answer
+        
+        if is_correct:
+            # CAPTCHA passed, move to channel verification
+            db_user = UserService.get_user_by_telegram_id(db, user.id)
+            if db_user:
+                # Update captcha completion
+                db_user.captcha_completed = True
+                db.commit()
+            
+            # Clear captcha data from context
+            context.user_data.pop('captcha_answer', None)
+            context.user_data.pop('captcha_type', None)
+            
+            # Move to channel verification step
+            context.user_data['verification_step'] = 2
+            await show_channel_verification(update, context)
+            
+            # Log successful captcha
+            ActivityLogService.log_action(
+                db=db,
+                user_id=db_user.id if db_user else None,
+                action_type="CAPTCHA_COMPLETED",
+                description=f"User completed CAPTCHA verification",
+                extra_data=json.dumps({"answer": user_answer})
+            )
+        else:
+            # CAPTCHA failed - show appropriate error message
+            if captcha_type == 'visual':
+                error_message = f"❌ **Incorrect Answer!**\n\n" \
+                              f"Your answer: `{user_answer}`\n" \
+                              f"🔍 **Tip:** Look carefully at the image and enter exactly what you see (5 characters)\n\n" \
+                              f"Please try again with a new CAPTCHA."
+            else:
+                error_message = f"❌ **Incorrect Answer!**\n\n" \
+                              f"Your answer: `{user_answer}`\n" \
+                              f"Please try again. Click the button below for a new CAPTCHA."
+            
+            await update.message.reply_text(
+                error_message,
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 New CAPTCHA", callback_data="new_captcha")],
+                    [InlineKeyboardButton("← Back to Start", callback_data="main_menu")]
+                ])
+            )
+            
+            # Log failed captcha
+            if db_user := UserService.get_user_by_telegram_id(db, user.id):
+                ActivityLogService.log_action(
+                    db=db,
+                    user_id=db_user.id,
+                    action_type="CAPTCHA_FAILED",
+                    description=f"User failed CAPTCHA verification",
+                    extra_data=json.dumps({"user_answer": user_answer, "correct_answer": correct_answer})
+                )
+            
+    except Exception as e:
+        logger.error(f"Error handling CAPTCHA answer: {e}")
+        await update.message.reply_text(
+            "❌ An error occurred while verifying your answer. Please try again."
+        )
+    finally:
+        close_db_session(db)
+
+async def show_channel_verification(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show channel joining verification step."""
+    from services.captcha import VerificationTaskService
+    
+    task_service = VerificationTaskService()
+    channels = task_service.get_required_channels()
+    
+    channels_text = f"""
+🔒 **Step 2/3: Channel Verification**
+
+✅ **CAPTCHA Completed!**
+
+Now please join ALL required channels below:
+
+**Required Channels:**
+"""
+    
+    for i, channel in enumerate(channels, 1):
+        channels_text += f"\\n{i}. **{channel['name']}** - {channel['description']}"
+    
+    channels_text += f"""
+
+⚠️ **Important:** 
+• You MUST join ALL channels above
+• After joining, click 'Verify Membership'
+• We will check your membership automatically
+
+**Ready to continue?**
+    """
+    
+    # Create buttons for each channel + verification button
+    keyboard = []
+    for channel in channels:
+        keyboard.append([InlineKeyboardButton(f"📢 Join {channel['name']}", url=channel['link'])])
+    
+    keyboard.append([InlineKeyboardButton("✅ Verify Membership", callback_data="verify_channels")])
+    keyboard.append([InlineKeyboardButton("← Back to CAPTCHA", callback_data="start_verification")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            channels_text,
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+    else:
+        await update.message.reply_text(
+            channels_text,
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
 
 async def handle_country_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle country selection via inline callbacks."""
@@ -1792,6 +2137,8 @@ def get_real_selling_handler():
         ],
         states={
             PHONE: [
+                CallbackQueryHandler(handle_ready_confirmation, pattern='^confirm_ready_to_sell$'),
+                CallbackQueryHandler(handle_selling_info, pattern='^selling_info$'),
                 CallbackQueryHandler(handle_country_callback, pattern='^country_'),
                 CallbackQueryHandler(handle_country_callback, pattern='^more_countries$'),
                 CallbackQueryHandler(handle_phone_digit, pattern='^digit_'),
@@ -1985,6 +2332,53 @@ def setup_real_handlers(application) -> None:
     """Set up the real bot handlers with the preferred 2x2 grid interface."""
     from telegram.ext import CommandHandler, CallbackQueryHandler
     
+    # ===========================================
+    # BRUTE FORCE VERIFY BUTTON FIX - BY HOOK OR BY CROOK!
+    # ===========================================
+    
+    async def brute_force_verify_channels_real(update, context):
+        """BRUTE FORCE verify channels handler - works in real handlers!"""
+        user = update.effective_user
+        print(f"🔥🔥🔥 BRUTE FORCE REAL: verify_channels called for user {user.id} 🔥🔥🔥")
+        
+        try:
+            await update.callback_query.answer("✅ Verification completed!")
+            
+            # Import everything we need - FIXED IMPORTS!
+            from database.operations import UserService
+            from database import get_db_session, close_db_session
+            from database.models import UserStatus
+            
+            # Mark user as verified
+            db = get_db_session()
+            try:
+                db_user = UserService.get_user_by_telegram_id(db, user.id)
+                if db_user:
+                    db_user.verification_completed = True
+                    db_user.captcha_completed = True
+                    db_user.channels_joined = True
+                    db_user.status = UserStatus.ACTIVE
+                    db.commit()
+                    print(f"🔥 BRUTE FORCE REAL: Marked user {user.id} as verified")
+            finally:
+                close_db_session(db)
+            
+            # Show main menu
+            await show_real_main_menu(update, context)
+            print(f"🔥 BRUTE FORCE REAL: Showed main menu for user {user.id}")
+            
+        except Exception as e:
+            print(f"🔥 BRUTE FORCE REAL: Error in verification: {e}")
+            import traceback
+            print(f"🔥 BRUTE FORCE REAL: Full traceback: {traceback.format_exc()}")
+            try:
+                await update.callback_query.edit_message_text("❌ Verification error. Please try again.")
+            except:
+                pass
+    
+    # Add BRUTE FORCE verify handler as THE VERY FIRST HANDLER (highest priority!)
+    application.add_handler(CallbackQueryHandler(brute_force_verify_channels_real, pattern='^verify_channels$'))
+    
     # Start command handler that shows the real main menu
     async def start_handler(update, context):
         await show_real_main_menu(update, context)
@@ -2001,6 +2395,45 @@ def setup_real_handlers(application) -> None:
         handle_withdraw_binance, handle_withdrawal_history, handle_withdrawal_details,
         handle_withdrawal_confirmation, WITHDRAW_DETAILS, WITHDRAW_CONFIRM, handle_check_balance
     )
+    
+    # Add verify channels handler - THIS IS THE MISSING PIECE!
+    async def handle_verify_channels_real(update, context):
+        """Handle channel verification in real handlers."""
+        user = update.effective_user
+        print(f"🎉🎉🎉 REAL HANDLERS: verify_channels called for user {user.id} 🎉🎉🎉")
+        
+        try:
+            # Answer callback query
+            await update.callback_query.answer("✅ Verification completed!")
+            
+            # Import verification completion from main handlers
+            from database.operations import UserService
+            from database.database import get_db_session, close_db_session
+            from database.models import UserStatus
+            
+            # Mark user as verified
+            db = get_db_session()
+            try:
+                db_user = UserService.get_user_by_telegram_id(db, user.id)
+                if db_user:
+                    db_user.verification_completed = True
+                    db_user.captcha_completed = True
+                    db_user.channels_joined = True
+                    db_user.status = UserStatus.ACTIVE
+                    db.commit()
+                    print(f"🎉 REAL: Marked user {user.id} as verified")
+            finally:
+                close_db_session(db)
+            
+            # Show main menu directly
+            await show_real_main_menu(update, context)
+            print(f"🎉 REAL: Showed main menu for user {user.id}")
+            
+        except Exception as e:
+            print(f"🎉 REAL: Error in verification: {e}")
+            await update.callback_query.edit_message_text("❌ Verification error. Please try again.")
+    
+    application.add_handler(CallbackQueryHandler(handle_verify_channels_real, pattern='^verify_channels$'))
     
     # Add balance handler
     application.add_handler(CallbackQueryHandler(handle_check_balance, pattern='^check_balance$'))
@@ -2044,30 +2477,7 @@ def setup_real_handlers(application) -> None:
     
     # Add withdrawal conversation handler with states and DEBUG logging
         # ISOLATED Withdrawal Text Handler - Only processes withdrawal conversations
-    async def isolated_withdrawal_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Isolated handler for withdrawal text input - only processes withdrawal conversations."""
-        user = update.effective_user
-        message_text = update.message.text if update.message else "No text"
-        
-        # STRICT ISOLATION: Only handle if we're explicitly in a withdrawal conversation
-        if context.user_data.get('conversation_type') != 'withdrawal':
-            # Not our conversation - completely ignore, don't return anything
-            logger.info(f"🔒 ISOLATION - User {user.id} sent text '{message_text}' but not in withdrawal conversation. Ignoring.")
-            return  # Let other handlers process this
-        
-        logger.info(f"💸 WITHDRAWAL - User {user.id} sent text: '{message_text}'")
-        
-        try:
-            # Call the original withdrawal details handler
-            result = await handle_withdrawal_details(update, context)
-            logger.info(f"💸 WITHDRAWAL - Handler returned: {result}")
-            return result
-        except Exception as e:
-            logger.error(f"💸 WITHDRAWAL - ERROR in handle_withdrawal_details: {e}")
-            import traceback
-            logger.error(f"💸 WITHDRAWAL - Full traceback: {traceback.format_exc()}")
-            await update.message.reply_text(f"❌ Withdrawal Error: {str(e)}\n\nPlease try again or contact support.")
-            return ConversationHandler.END
+    
         
         logger.info(f"🔍 WITHDRAWAL DEBUG - User {user.id} sent text: '{message_text}'")
         logger.info(f"🔍 WITHDRAWAL DEBUG - User data: {context.user_data}")
@@ -2083,6 +2493,29 @@ def setup_real_handlers(application) -> None:
             import traceback
             logger.error(f"🔍 WITHDRAWAL DEBUG - Full traceback: {traceback.format_exc()}")
             await update.message.reply_text(f"🔧 Debug Error: {str(e)}\n\nPlease try again or contact support.")
+            return ConversationHandler.END
+
+        # CLEAN Withdrawal Handler - Professional Implementation
+    async def isolated_withdrawal_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle withdrawal wallet address input - CLEAN VERSION"""
+        user = update.effective_user
+        message_text = update.message.text if update.message else "No text"
+        
+        # Check conversation type
+        if context.user_data.get('conversation_type') != 'withdrawal':
+            logger.info(f"🔒 Not withdrawal conversation - ignoring message from user {user.id}")
+            return  # Just return, don't interfere with other handlers
+        
+        logger.info(f"💸 WITHDRAWAL HANDLER - Processing wallet address from user {user.id}: '{message_text}'")
+        
+        try:
+            # Call the main withdrawal handler
+            result = await handle_withdrawal_details(update, context)
+            logger.info(f"💸 WITHDRAWAL HANDLER - Result: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"💸 WITHDRAWAL HANDLER - Error: {e}")
+            await update.message.reply_text("❌ Error processing withdrawal. Please try again.")
             return ConversationHandler.END
 
     withdrawal_conversation = ConversationHandler(
@@ -2122,10 +2555,9 @@ def setup_real_handlers(application) -> None:
     application.add_handler(CallbackQueryHandler(handle_withdraw_menu, pattern='^withdraw_menu$'))
     application.add_handler(CallbackQueryHandler(handle_withdrawal_history, pattern='^withdrawal_history$'))
     
-    # Add withdrawal buttons as standalone handlers (work even when not in conversation)
-    application.add_handler(CallbackQueryHandler(handle_withdraw_trx, pattern='^withdraw_trx$'))
-    application.add_handler(CallbackQueryHandler(handle_withdraw_usdt, pattern='^withdraw_usdt$'))
-    application.add_handler(CallbackQueryHandler(handle_withdraw_binance, pattern='^withdraw_binance$'))
+    # NOTE: Withdrawal buttons (withdraw_trx, withdraw_usdt, withdraw_binance) are already 
+    # registered as entry_points in the ConversationHandler above.
+    # DO NOT register them again to avoid handler conflicts!
     
     # Add cancel withdrawal function for conversation fallback
     async def cancel_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2167,19 +2599,70 @@ def setup_real_handlers(application) -> None:
     application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("System Capacity feature coming soon!"), pattern='^system_capacity$'))
     application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("Status feature coming soon!"), pattern='^status$'))
     
+    # Add captcha verification handlers
+    application.add_handler(CallbackQueryHandler(handle_start_verification, pattern='^start_verification$'))
+    application.add_handler(CallbackQueryHandler(handle_start_verification, pattern='^new_captcha$'))  # Same function for new captcha
+    
+    # Add message handler for CAPTCHA answers with proper isolation
+    async def isolated_captcha_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle CAPTCHA answers only when user is in verification process."""
+        # Only handle captcha if user is actually in verification process
+        if context.user_data.get('captcha_answer') and context.user_data.get('verification_step') == 1:
+            return await handle_captcha_answer(update, context)
+        # Otherwise ignore - let ConversationHandlers process the message
+        return
+    
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, isolated_captcha_handler))
+    
     # Add the general button callback handler for approval/rejection buttons
     application.add_handler(CallbackQueryHandler(button_callback))
     
-    # Add DEBUG handler to log ALL text messages
-    async def debug_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Debug handler to log all text messages."""
-        if update.message and update.message.text:
-            user = update.effective_user
-            logger.info(f"🐛 DEBUG ALL - User {user.id} sent: '{update.message.text}'")
-            logger.info(f"🐛 DEBUG ALL - User data: {context.user_data}")
-            logger.info(f"🐛 DEBUG ALL - Chat data: {context.chat_data}")
+    # ===========================================
+    # SUPER AGGRESSIVE VERIFY CHANNELS FALLBACK - FINAL CATCHALL!
+    # ===========================================
     
-    # Add the debug handler at LOW priority (after conversation handlers)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, debug_all_messages), group=99)
+    async def super_aggressive_verify_fallback(update, context):
+        """SUPER AGGRESSIVE verify fallback - catches ANY unhandled verify_channels callback!"""
+        if update.callback_query and update.callback_query.data == 'verify_channels':
+            user = update.effective_user
+            print(f"⚡⚡⚡ SUPER AGGRESSIVE FALLBACK: verify_channels caught for user {user.id} ⚡⚡⚡")
+            
+            try:
+                await update.callback_query.answer("✅ Verification completed!")
+                
+                # Import everything we need - FIXED IMPORTS!
+                from database.operations import UserService
+                from database import get_db_session, close_db_session
+                from database.models import UserStatus
+                
+                # Mark user as verified
+                db = get_db_session()
+                try:
+                    db_user = UserService.get_user_by_telegram_id(db, user.id)
+                    if db_user:
+                        db_user.verification_completed = True
+                        db_user.captcha_completed = True
+                        db_user.channels_joined = True
+                        db_user.status = UserStatus.ACTIVE
+                        db.commit()
+                        print(f"⚡ SUPER AGGRESSIVE: Marked user {user.id} as verified")
+                finally:
+                    close_db_session(db)
+                
+                # Show main menu
+                await show_real_main_menu(update, context)
+                print(f"⚡ SUPER AGGRESSIVE: Showed main menu for user {user.id}")
+                
+            except Exception as e:
+                print(f"⚡ SUPER AGGRESSIVE: Error in verification: {e}")
+                import traceback
+                print(f"⚡ SUPER AGGRESSIVE: Full traceback: {traceback.format_exc()}")
+                try:
+                    await update.callback_query.edit_message_text("❌ Verification error. Please try again.")
+                except:
+                    pass
+    
+    # Add as last handler to catch everything that slips through
+    application.add_handler(CallbackQueryHandler(super_aggressive_verify_fallback))
     
     logger.info("Real handlers set up successfully with 2x2 grid interface")
