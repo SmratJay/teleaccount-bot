@@ -7,7 +7,7 @@ import logging
 import os
 from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler
-from handlers.main_handlers import setup_main_handlers
+from handlers.real_handlers import setup_real_handlers
 
 # Configure detailed logging with Unicode support
 logging.basicConfig(
@@ -68,8 +68,8 @@ def main():
     # Create application
     application = Application.builder().token(BOT_TOKEN).build()
     
-    # Add all handlers using the main handler setup
-    setup_main_handlers(application)
+    # Add all handlers using the real handler setup  
+    setup_real_handlers(application)
     
     logger.info("REAL Telegram Account Selling Bot Started!")
     logger.info("Features: Real OTP -> Real Login -> Real Account Transfer")

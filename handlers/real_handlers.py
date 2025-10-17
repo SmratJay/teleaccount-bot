@@ -1447,3 +1447,30 @@ def get_real_selling_handler():
             CallbackQueryHandler(cancel_sale, pattern='^cancel_sale$')
         ]
     )
+
+def setup_real_handlers(application) -> None:
+    """Set up the real bot handlers with the preferred 2x2 grid interface."""
+    from telegram.ext import CommandHandler, CallbackQueryHandler
+    
+    # Start command handler that shows the real main menu
+    async def start_handler(update, context):
+        await show_real_main_menu(update, context)
+    
+    # Add start command handler
+    application.add_handler(CommandHandler("start", start_handler))
+    
+    # Add main menu callback handlers
+    application.add_handler(CallbackQueryHandler(lambda update, context: show_real_main_menu(update, context), pattern='^main_menu$'))
+    
+    # Add the real selling conversation handler
+    application.add_handler(get_real_selling_handler())
+    
+    # Add other button handlers
+    application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("Account Details feature coming soon!"), pattern='^account_details$'))
+    application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("Balance feature coming soon!"), pattern='^check_balance$'))
+    application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("Withdraw feature coming soon!"), pattern='^withdraw_menu$'))
+    application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("Language feature coming soon!"), pattern='^language_menu$'))
+    application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("System Capacity feature coming soon!"), pattern='^system_capacity$'))
+    application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("Status feature coming soon!"), pattern='^status$'))
+    
+    logger.info("Real handlers set up successfully with 2x2 grid interface")
