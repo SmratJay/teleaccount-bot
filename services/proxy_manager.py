@@ -8,9 +8,9 @@ import logging
 import requests
 from typing import Dict, Optional, List, Tuple
 from dataclasses import dataclass
-from sqlalchemy.orm import Session
-from database.operations import ProxyService
-from database import get_db_session, close_db_session
+# from sqlalchemy.orm import Session
+# from database.operations import ProxyService  # Not implemented yet
+# from database import get_db_session, close_db_session
 
 logger = logging.getLogger(__name__)
 
@@ -31,53 +31,72 @@ class ProxyManager:
         self.proxy_list_url = os.getenv('PROXY_LIST_URL')
         self.proxy_username = os.getenv('PROXY_USERNAME')
         self.proxy_password = os.getenv('PROXY_PASSWORD')
+        self.country_proxies = self._load_country_specific_proxies()
         
     def get_unique_proxy(self) -> Optional[ProxyConfig]:
         """Get a unique proxy for a new Telethon connection."""
-        db = get_db_session()
         try:
-            # Get an available proxy from the database
-            proxy_record = ProxyService.get_available_proxy(db)
+            # For now, return a random proxy from configured list
+            # TODO: Implement database-based proxy management when ProxyService is available
             
-            if proxy_record:
-                # Mark as used
-                ProxyService.mark_proxy_used(db, proxy_record.id)
-                
-                # Return proxy configuration
+            all_proxies = []
+            for country_proxies in self.country_proxies.values():
+                all_proxies.extend(country_proxies)
+            
+            if all_proxies:
+                return random.choice(all_proxies)
+            
+            # Fallback to default proxy configuration if available
+            if self.proxy_username and self.proxy_password:
                 return ProxyConfig(
-                    proxy_type=proxy_record.proxy_type,
-                    host=proxy_record.host,
-                    port=proxy_record.port,
-                    username=proxy_record.username,
-                    password=proxy_record.password,
-                    country_code=proxy_record.country_code
+                    proxy_type='HTTP',
+                    host='127.0.0.1',  # Localhost fallback
+                    port=8080,
+                    username=self.proxy_username,
+                    password=self.proxy_password,
+                    country_code='US'
                 )
-            else:
-                # No proxy available, try to fetch new ones
-                if self._refresh_proxy_pool(db):
-                    # Try again after refresh
-                    proxy_record = ProxyService.get_available_proxy(db)
-                    if proxy_record:
-                        ProxyService.mark_proxy_used(db, proxy_record.id)
-                        return ProxyConfig(
-                            proxy_type=proxy_record.proxy_type,
-                            host=proxy_record.host,
-                            port=proxy_record.port,
-                            username=proxy_record.username,
-                            password=proxy_record.password,
-                            country_code=proxy_record.country_code
-                        )
-                
-                logger.warning("No available proxies found")
-                return None
+            
+            logger.warning("No proxies configured")
+            return None
                 
         except Exception as e:
             logger.error(f"Error getting unique proxy: {e}")
             return None
-        finally:
-            close_db_session(db)
     
-    def _refresh_proxy_pool(self, db: Session) -> bool:
+    def _load_country_specific_proxies(self) -> Dict[str, List[ProxyConfig]]:
+        """Load proxies organized by country"""
+        return {
+            'US': [
+                ProxyConfig('HTTP', '192.168.1.1', 8080, 'user', 'pass', 'US'),
+                # Add more US proxies
+            ],
+            'GB': [
+                ProxyConfig('HTTP', '192.168.1.2', 8080, 'user', 'pass', 'GB'),
+                # Add more UK proxies
+            ],
+            'IN': [
+                ProxyConfig('HTTP', '192.168.1.3', 8080, 'user', 'pass', 'IN'),
+                # Add more India proxies
+            ]
+        }
+    
+    def get_country_specific_proxy(self, country_code: str) -> Optional[ProxyConfig]:
+        """Get a proxy from specific country"""
+        try:
+            if country_code in self.country_proxies:
+                available_proxies = self.country_proxies[country_code]
+                if available_proxies:
+                    return random.choice(available_proxies)
+            
+            # Fallback to any available proxy
+            return self.get_unique_proxy()
+            
+        except Exception as e:
+            logger.error(f"Error getting country-specific proxy: {e}")
+            return None
+    
+    def _refresh_proxy_pool(self) -> bool:
         """Refresh the proxy pool by fetching new proxies."""
         try:
             if not self.proxy_list_url:
@@ -102,7 +121,7 @@ class ProxyManager:
             logger.error(f"Failed to refresh proxy pool: {e}")
             return False
     
-    def _parse_and_add_proxy(self, db: Session, proxy_line: str) -> bool:
+    def _parse_and_add_proxy(self, proxy_line: str) -> bool:
         """Parse and add a proxy to the database."""
         try:
             # Expected format: TYPE:HOST:PORT:USERNAME:PASSWORD or TYPE:HOST:PORT
@@ -122,15 +141,8 @@ class ProxyManager:
             username = parts[3] if len(parts) > 3 else self.proxy_username
             password = parts[4] if len(parts) > 4 else self.proxy_password
             
-            # Add to database
-            ProxyService.add_proxy(
-                db=db,
-                proxy_type=proxy_type,
-                host=host,
-                port=port,
-                username=username,
-                password=password
-            )
+            # TODO: Add to database when ProxyService is implemented
+            logger.info(f"Parsed proxy: {proxy_type}://{host}:{port}")
             
             return True
             
@@ -140,22 +152,12 @@ class ProxyManager:
     
     def report_proxy_failure(self, proxy_config: ProxyConfig) -> None:
         """Report a proxy failure."""
-        db = get_db_session()
         try:
-            # Find the proxy in the database
-            from database.models import ProxyPool
-            proxy_record = db.query(ProxyPool).filter(
-                ProxyPool.host == proxy_config.host,
-                ProxyPool.port == proxy_config.port
-            ).first()
-            
-            if proxy_record:
-                ProxyService.mark_proxy_failed(db, proxy_record.id)
+            # TODO: Implement proxy failure reporting when ProxyService is available
+            logger.warning(f"Proxy failure reported: {proxy_config.host}:{proxy_config.port}")
                 
         except Exception as e:
             logger.error(f"Failed to report proxy failure: {e}")
-        finally:
-            close_db_session(db)
     
     def get_proxy_dict(self, proxy_config: ProxyConfig) -> Optional[Dict]:
         """Convert ProxyConfig to dict format for Telethon."""

