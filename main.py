@@ -1,5 +1,6 @@
 """
-Telegram Account Bot - Main Application Entry Point
+Telegram Account Bot - Main Application En        # Set up handlers
+        setup_main_handlers(self.application)y Point
 """
 import os
 import sys
@@ -13,7 +14,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from telegram.ext import Application, CommandHandler, MessageHandler, ConversationHandler, filters
 from database import db_manager, create_tables
-from handlers import setup_handlers
+from handlers.main_handlers import setup_main_handlers
 from utils.logging_config import setup_logging
 
 # Load environment variables
@@ -46,7 +47,7 @@ class TelegramAccountBot:
         self.application = Application.builder().token(self.bot_token).build()
         
         # Setup handlers
-        setup_handlers(self.application)
+        setup_main_handlers(self.application)
         
         self.logger.info("Telegram Account Bot initialized successfully")
     

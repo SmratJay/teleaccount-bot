@@ -10,8 +10,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Database URL
-DATABASE_URL = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+# Database URL - Support both PostgreSQL and SQLite
+db_user = os.getenv('DB_USER')
+if db_user == 'sqlite':
+    # SQLite configuration for Windows
+    DATABASE_URL = f"sqlite:///{os.getenv('DB_NAME')}"
+else:
+    # PostgreSQL configuration for production
+    DATABASE_URL = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
 
 # Create engine with connection pooling
 engine = create_engine(

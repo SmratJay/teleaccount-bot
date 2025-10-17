@@ -1,3 +1,30 @@
+# Environment files - KEEP SECURE
+.env
+.env.local
+.env.production
+*.env
+
+# Database files - Don't upload to GitHub
+*.db
+*.sqlite
+*.sqlite3
+teleaccount_bot.db
+
+# Session files - Keep private
+*.session
+*.session-journal
+
+# Temporary/diagnostic files
+check_leaders.py
+set_leader.py
+find_channel_id.py
+get_channel_id.py
+get_bot_info.py
+diagnose_otp.py
+test_*.py
+session_diagnostic.py
+test_withdrawal_config.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

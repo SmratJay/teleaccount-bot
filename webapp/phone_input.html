@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phone Input - Telegram Account Bot</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        body {
+            background: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .title {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--tg-theme-text-color, #000);
+            margin-bottom: 8px;
+        }
+        
+        .subtitle {
+            font-size: 16px;
+            color: var(--tg-theme-hint-color, #707579);
+            line-height: 1.4;
+        }
+        
+        .warning {
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            font-size: 14px;
+            color: #c62828;
+        }
+        
+        .form-section {
+            margin-bottom: 24px;
+        }
+        
+        .label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--tg-theme-text-color, #000);
+        }
+        
+        .country-selector {
+            width: 100%;
+            padding: 16px;
+            border: 2px solid var(--tg-theme-section-separator-color, #e0e0e0);
+            border-radius: 12px;
+            font-size: 16px;
+            background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+            color: var(--tg-theme-text-color, #000);
+            margin-bottom: 16px;
+            cursor: pointer;
+        }
+        
+        .phone-container {
+            display: flex;
+            gap: 12px;
+            align-items: stretch;
+        }
+        
+        .country-code {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px 20px;
+            border: 2px solid var(--tg-theme-section-separator-color, #e0e0e0);
+            border-radius: 12px;
+            background: var(--tg-theme-section-bg-color, #f8f9fa);
+            color: var(--tg-theme-text-color, #000);
+            font-weight: 600;
+            font-size: 16px;
+            min-width: 80px;
+        }
+        
+        .phone-input {
+            flex: 1;
+            padding: 16px;
+            border: 2px solid var(--tg-theme-section-separator-color, #e0e0e0);
+            border-radius: 12px;
+            font-size: 16px;
+            background: var(--tg-theme-secondary-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000);
+        }
+        
+        .phone-input:focus {
+            outline: none;
+            border-color: var(--tg-theme-button-color, #007aff);
+            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border: 1px solid #90caf9;
+            color: #1565c0;
+            padding: 16px;
+            border-radius: 12px;
+            margin: 20px 0;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        
+        .submit-btn {
+            width: 100%;
+            background: var(--tg-theme-button-color, #007aff);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none;
+            padding: 18px;
+            border-radius: 12px;
+            font-size: 17px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 20px;
+        }
+        
+        .submit-btn:hover {
+            opacity: 0.9;
+        }
+        
+        .submit-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .validation-msg {
+            color: #f44336;
+            font-size: 14px;
+            margin-top: 8px;
+            display: none;
+        }
+        
+        @media (prefers-color-scheme: dark) {
+            .warning {
+                background: #1a1a1a;
+                color: #ff6b6b;
+                border-color: #ff6b6b;
+            }
+            
+            .info-box {
+                background: #1a1a1a;
+                color: #4fc3f7;
+                border-color: #4fc3f7;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title">📱 Phone Verification</div>
+            <div class="subtitle">Enter your Telegram phone number for real account verification</div>
+        </div>
+        
+        <div class="warning">
+            <strong>⚠️ REAL PROCESS WARNING</strong><br>
+            This will send an actual OTP to your phone via Telegram API. Only proceed if you're ready to sell your account for real.
+        </div>
+        
+        <form id="phoneForm">
+            <div class="form-section">
+                <label class="label">Select Your Country</label>
+                <select class="country-selector" id="countrySelect">
+                    <option value="">Choose your country...</option>
+                    <option value="+1">🇺🇸 United States (+1)</option>
+                    <option value="+1">🇨🇦 Canada (+1)</option>
+                    <option value="+91">🇮🇳 India (+91)</option>
+                    <option value="+44">🇬🇧 United Kingdom (+44)</option>
+                    <option value="+61">🇦🇺 Australia (+61)</option>
+                    <option value="+49">🇩🇪 Germany (+49)</option>
+                    <option value="+33">🇫🇷 France (+33)</option>
+                    <option value="+7">🇷🇺 Russia (+7)</option>
+                    <option value="+55">🇧🇷 Brazil (+55)</option>
+                    <option value="+81">🇯🇵 Japan (+81)</option>
+                    <option value="+86">🇨🇳 China (+86)</option>
+                    <option value="+82">🇰🇷 South Korea (+82)</option>
+                    <option value="+34">🇪🇸 Spain (+34)</option>
+                    <option value="+39">🇮🇹 Italy (+39)</option>
+                    <option value="+31">🇳🇱 Netherlands (+31)</option>
+                    <option value="manual">🌍 Other (enter manually)</option>
+                </select>
+            </div>
+            
+            <div class="form-section">
+                <label class="label">Phone Number</label>
+                <div class="phone-container" id="phoneContainer">
+                    <div class="country-code" id="countryCode" style="display: none;">+1</div>
+                    <input 
+                        type="tel" 
+                        class="phone-input" 
+                        id="phoneInput" 
+                        placeholder="Select country first..."
+                        disabled
+                        autocomplete="tel"
+                        inputmode="numeric"
+                    >
+                </div>
+                <div class="validation-msg" id="validationMsg"></div>
+            </div>
+            
+            <div class="info-box" id="infoBox" style="display: none;">
+                <strong>📋 Review Your Number:</strong><br>
+                <span id="fullPhoneDisplay"></span>
+            </div>
+            
+            <button type="submit" class="submit-btn" id="submitBtn" disabled>
+                📲 Send Real OTP Code
+            </button>
+        </form>
+    </div>
+    
+    <script>
+        // Initialize Telegram WebApp
+        let tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        
+        // Apply Telegram theme
+        document.body.style.backgroundColor = tg.themeParams.bg_color || '#ffffff';
+        
+        const countrySelect = document.getElementById('countrySelect');
+        const countryCode = document.getElementById('countryCode');
+        const phoneInput = document.getElementById('phoneInput');
+        const submitBtn = document.getElementById('submitBtn');
+        const validationMsg = document.getElementById('validationMsg');
+        const infoBox = document.getElementById('infoBox');
+        const fullPhoneDisplay = document.getElementById('fullPhoneDisplay');
+        
+        // Country selection handler
+        countrySelect.addEventListener('change', function() {
+            const selectedValue = this.value;
+            
+            if (selectedValue === '') {
+                // No country selected
+                countryCode.style.display = 'none';
+                phoneInput.disabled = true;
+                phoneInput.placeholder = 'Select country first...';
+                phoneInput.value = '';
+            } else if (selectedValue === 'manual') {
+                // Manual entry
+                countryCode.style.display = 'none';
+                phoneInput.disabled = false;
+                phoneInput.placeholder = '+1234567890 (include country code)';
+                phoneInput.value = '';
+            } else {
+                // Country selected
+                countryCode.style.display = 'flex';
+                countryCode.textContent = selectedValue;
+                phoneInput.disabled = false;
+                phoneInput.placeholder = 'Enter your phone number...';
+                phoneInput.value = '';
+            }
+            
+            validateForm();
+        });
+        
+        // Phone input handler
+        phoneInput.addEventListener('input', function() {
+            const countryValue = countrySelect.value;
+            
+            if (countryValue === 'manual') {
+                // Allow + and digits for manual entry
+                this.value = this.value.replace(/[^+0-9]/g, '');
+            } else {
+                // Only digits for selected countries
+                this.value = this.value.replace(/[^0-9]/g, '');
+            }
+            
+            validateForm();
+        });
+        
+        // Real-time validation
+        function validateForm() {
+            const countryValue = countrySelect.value;
+            const phoneValue = phoneInput.value.trim();
+            
+            let isValid = false;
+            let errorMsg = '';
+            let fullPhone = '';
+            
+            if (countryValue === '') {
+                errorMsg = 'Please select your country';
+            } else if (countryValue === 'manual') {
+                // Manual entry validation
+                if (!phoneValue.startsWith('+')) {
+                    errorMsg = 'Phone number must start with + for manual entry';
+                } else if (phoneValue.length < 8) {
+                    errorMsg = 'Phone number too short (minimum 8 digits)';
+                } else if (phoneValue.length > 16) {
+                    errorMsg = 'Phone number too long (maximum 15 digits)';
+                } else {
+                    isValid = true;
+                    fullPhone = phoneValue;
+                }
+            } else {
+                // Selected country validation
+                if (phoneValue.length < 6) {
+                    errorMsg = 'Phone number too short';
+                } else if (phoneValue.length > 15) {
+                    errorMsg = 'Phone number too long';
+                } else if (!/^[0-9]+$/.test(phoneValue)) {
+                    errorMsg = 'Phone number can only contain digits';
+                } else {
+                    isValid = true;
+                    fullPhone = countryValue + phoneValue;
+                }
+            }
+            
+            // Update UI
+            if (errorMsg) {
+                validationMsg.textContent = errorMsg;
+                validationMsg.style.display = 'block';
+                infoBox.style.display = 'none';
+            } else {
+                validationMsg.style.display = 'none';
+                if (isValid && fullPhone) {
+                    fullPhoneDisplay.textContent = fullPhone;
+                    infoBox.style.display = 'block';
+                } else {
+                    infoBox.style.display = 'none';
+                }
+            }
+            
+            submitBtn.disabled = !isValid;
+        }
+        
+        // Form submission
+        document.getElementById('phoneForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const countryValue = countrySelect.value;
+            const phoneValue = phoneInput.value.trim();
+            
+            let fullPhone = '';
+            if (countryValue === 'manual') {
+                fullPhone = phoneValue;
+            } else {
+                fullPhone = countryValue + phoneValue;
+            }
+            
+            // Send data to Telegram bot
+            tg.sendData(JSON.stringify({
+                action: 'phone_submitted',
+                phone: fullPhone,
+                country: countryValue,
+                timestamp: Date.now()
+            }));
+            
+            // Close WebApp
+            tg.close();
+        });
+        
+        // Telegram WebApp event handlers
+        tg.onEvent('mainButtonClicked', function() {
+            document.getElementById('phoneForm').requestSubmit();
+        });
+        
+        // Set main button
+        function updateMainButton() {
+            if (submitBtn.disabled) {
+                tg.MainButton.hide();
+            } else {
+                tg.MainButton.setText('📲 Send Real OTP Code');
+                tg.MainButton.show();
+            }
+        }
+        
+        // Update main button on validation changes
+        const observer = new MutationObserver(updateMainButton);
+        observer.observe(submitBtn, { attributes: true, attributeFilter: ['disabled'] });
+        
+        updateMainButton();
+    </script>
+</body>
+</html>

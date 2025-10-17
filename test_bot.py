@@ -57,9 +57,9 @@ def test_utilities():
     
     try:
         # Test phone validation
-        is_valid, formatted = PhoneUtils.validate_phone_number("+1234567890")
+        is_valid, formatted = PhoneUtils.validate_phone_number("+12125551234")
         assert is_valid, "Phone validation failed"
-        assert formatted == "+1234567890", "Phone formatting failed"
+        assert formatted == "+12125551234", "Phone formatting failed"
         print("✅ Phone utilities working")
         
         # Test captcha generation
