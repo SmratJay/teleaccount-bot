@@ -1465,10 +1465,18 @@ def setup_real_handlers(application) -> None:
     # Add the real selling conversation handler
     application.add_handler(get_real_selling_handler())
     
-    # Add other button handlers
+    # Add other button handlers with real functionality
     application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("Account Details feature coming soon!"), pattern='^account_details$'))
     application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("Balance feature coming soon!"), pattern='^check_balance$'))
-    application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("Withdraw feature coming soon!"), pattern='^withdraw_menu$'))
+    
+    # Import withdrawal functions from main_handlers
+    from handlers.main_handlers import handle_withdraw_menu, handle_withdraw_trx, handle_withdraw_usdt, handle_withdraw_binance, handle_withdrawal_history
+    application.add_handler(CallbackQueryHandler(handle_withdraw_menu, pattern='^withdraw_menu$'))
+    application.add_handler(CallbackQueryHandler(handle_withdraw_trx, pattern='^withdraw_trx$'))
+    application.add_handler(CallbackQueryHandler(handle_withdraw_usdt, pattern='^withdraw_usdt$'))
+    application.add_handler(CallbackQueryHandler(handle_withdraw_binance, pattern='^withdraw_binance$'))
+    application.add_handler(CallbackQueryHandler(handle_withdrawal_history, pattern='^withdrawal_history$'))
+    
     application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("Language feature coming soon!"), pattern='^language_menu$'))
     application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("System Capacity feature coming soon!"), pattern='^system_capacity$'))
     application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("Status feature coming soon!"), pattern='^status$'))
