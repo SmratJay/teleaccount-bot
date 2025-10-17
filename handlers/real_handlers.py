@@ -1467,7 +1467,10 @@ def setup_real_handlers(application) -> None:
     
     # Add other button handlers with real functionality
     application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("Account Details feature coming soon!"), pattern='^account_details$'))
-    application.add_handler(CallbackQueryHandler(lambda update, context: update.callback_query.answer("Balance feature coming soon!"), pattern='^check_balance$'))
+    
+    # Import balance function from main_handlers
+    from handlers.main_handlers import handle_check_balance
+    application.add_handler(CallbackQueryHandler(handle_check_balance, pattern='^check_balance$'))
     
     # Import withdrawal functions from main_handlers
     from handlers.main_handlers import handle_withdraw_menu, handle_withdraw_trx, handle_withdraw_usdt, handle_withdraw_binance, handle_withdrawal_history
