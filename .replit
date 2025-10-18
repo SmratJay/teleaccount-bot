@@ -3,6 +3,7 @@ modules = ["python-3.11"]
 
 [nix]
 channel = "stable-23_05"
+packages = ["cargo", "gmp", "libiconv", "libxcrypt", "openssl", "pkg-config", "postgresql", "rustc"]
 
 [deployment]
 run = ["sh", "-c", "python real_main.py"]
@@ -10,3 +11,6 @@ run = ["sh", "-c", "python real_main.py"]
 [[ports]]
 localPort = 8080
 externalPort = 80
+
+[agent]
+expertMode = true
