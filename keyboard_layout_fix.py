@@ -47,7 +47,7 @@ def get_main_menu_keyboard(user_id: int = None):
 
 def is_admin(user_id: int) -> bool:
     """Check if user has admin privileges."""
-    ADMIN_IDS = [123456789]  # Replace with actual admin IDs
+    ADMIN_IDS = [6733908384]  # Your actual admin ID
     return user_id in ADMIN_IDS
 
 def is_leader(user_id: int) -> bool:

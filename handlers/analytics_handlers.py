@@ -365,7 +365,7 @@ async def show_financial_analytics_details(update: Update, context: ContextTypes
 def is_admin(user_id: int) -> bool:
     """Check if user is admin."""
     # Simple admin check - replace with proper implementation
-    return user_id in [123456789]  # Replace with actual admin IDs
+    return user_id in [6733908384]  # Your actual admin ID
 
 def is_leader(user_id: int) -> bool:
     """Check if user is leader."""
