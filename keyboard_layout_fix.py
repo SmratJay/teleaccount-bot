@@ -1,9 +1,9 @@
 """
-Keyboard layout fix for Telegram Bot - provides consistent menu layouts
+Keyboard layou            InlineKeyboardButton("💸 Withdraw", callback_data="withdraw_menu"), fix for Telegram Bot - provides consistent menu layouts
 """
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-def get_main_menu_keyboard():
+def get_main_menu_keyboard(user_id: int = None):
     """Returns the main menu keyboard layout with exact user specification."""
     keyboard = [
         # First row - LFG (Full width button)
@@ -26,8 +26,41 @@ def get_main_menu_keyboard():
             InlineKeyboardButton("📊 Status", callback_data="status")
         ],
         
-        # Last row - Support (Full width button)
-        [InlineKeyboardButton("🆘 Support", url="https://t.me/BujhlamNaKiHolo")]
     ]
     
+    # Add admin/leader buttons if user has privileges
+    if user_id and (is_admin(user_id) or is_leader(user_id)):
+        admin_row = []
+        if is_admin(user_id):
+            admin_row.append(InlineKeyboardButton("⚙️ Admin Panel", callback_data="admin_panel"))
+        if is_leader(user_id):
+            admin_row.append(InlineKeyboardButton("👑 Leader Panel", callback_data="leader_refresh"))
+        keyboard.append(admin_row)
+        
+        # Add analytics button for privileged users
+        keyboard.append([InlineKeyboardButton("📊 Analytics", callback_data="analytics_refresh")])
+    
+    # Last row - Support (Full width button)
+    keyboard.append([InlineKeyboardButton("🆘 Support", url="https://t.me/BujhlamNaKiHolo")])
+    
     return InlineKeyboardMarkup(keyboard)
+
+def is_admin(user_id: int) -> bool:
+    """Check if user has admin privileges."""
+    ADMIN_IDS = [123456789]  # Replace with actual admin IDs
+    return user_id in ADMIN_IDS
+
+def is_leader(user_id: int) -> bool:
+    """Check if user has leader privileges."""
+    try:
+        from database import get_db_session, close_db_session
+        from database.models import User
+        
+        db = get_db_session()
+        try:
+            user = db.query(User).filter(User.telegram_user_id == user_id).first()
+            return user and user.is_leader
+        finally:
+            close_db_session(db)
+    except Exception:
+        return False
