@@ -281,19 +281,30 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await start_command(update, context)
 
 async def handle_start_verification(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Start the verification process with CAPTCHA."""
-    captcha_service = CaptchaService()
-    captcha_data = await captcha_service.generate_captcha()
+    """Start the verification process with IMAGE CAPTCHA."""
+    from services.captcha import ImageCaptchaService
+    
+    image_captcha_service = ImageCaptchaService()
+    
+    # Clean up any previous CAPTCHA image before generating a new one
+    old_captcha_filepath = context.user_data.get('captcha_filepath')
+    if old_captcha_filepath:
+        image_captcha_service.cleanup_captcha_image(old_captcha_filepath)
+    
+    captcha_data = await image_captcha_service.generate_image_captcha()
+    
+    if not captcha_data:
+        await update.callback_query.answer("❌ Error generating CAPTCHA. Please try again.", show_alert=True)
+        return
     
     verification_text = f"""
-🔒 **Step 1/3: CAPTCHA Verification**
+🔒 **Step 1/3: IMAGE CAPTCHA Verification**
 
-🧩 **Please solve this CAPTCHA:**
-
-**❓ Question:** {captcha_data['question']}
+🖼️ **Please solve the CAPTCHA below:**
 
 **📝 Instructions:**
-• Type your answer in the chat below
+• Look at the image carefully
+• Type the characters you see
 • Send the answer as a regular message
 • Case doesn't matter
 
@@ -306,15 +317,28 @@ async def handle_start_verification(update: Update, context: ContextTypes.DEFAUL
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Store CAPTCHA answer in context
+    # Store CAPTCHA answer and filepath in context
     context.user_data['captcha_answer'] = captcha_data['answer']
+    context.user_data['captcha_filepath'] = captcha_data['filepath']
     context.user_data['verification_step'] = 1
     
-    await update.callback_query.edit_message_text(
-        verification_text,
-        parse_mode='Markdown',
-        reply_markup=reply_markup
-    )
+    # Send the CAPTCHA image
+    try:
+        if update.callback_query:
+            await update.callback_query.message.delete()
+        
+        await update.effective_chat.send_photo(
+            photo=captcha_data['image_bytes'],
+            caption=verification_text,
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+    except Exception as e:
+        logger.error(f"Error sending image CAPTCHA: {e}")
+        await update.effective_chat.send_message(
+            "❌ Error displaying CAPTCHA. Please try again.",
+            reply_markup=reply_markup
+        )
 
 async def handle_lfg_sell(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle LFG (Let's F***ing Go) - Account selling process."""
@@ -1529,7 +1553,9 @@ Use the "LFG (Sell)" button to sell your first account!
         close_db_session(db)
 
 async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle CAPTCHA text answers."""
+    """Handle IMAGE CAPTCHA text answers."""
+    from services.captcha import ImageCaptchaService
+    
     user = update.effective_user
     user_answer = update.message.text.strip()
     
@@ -1538,10 +1564,18 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
         return  # Not in verification process
     
     db = get_db_session()
+    image_captcha_service = ImageCaptchaService()
+    
     try:
-        # Verify CAPTCHA answer
-        correct_answer = context.user_data.get('captcha_answer', '').lower().strip()
-        is_correct = user_answer.lower().strip() == correct_answer
+        # Verify IMAGE CAPTCHA answer
+        correct_answer = context.user_data.get('captcha_answer', '')
+        is_correct = image_captcha_service.verify_image_captcha(user_answer, correct_answer)
+        
+        # Clean up CAPTCHA image file
+        captcha_filepath = context.user_data.get('captcha_filepath')
+        if captcha_filepath:
+            image_captcha_service.cleanup_captcha_image(captcha_filepath)
+            context.user_data.pop('captcha_filepath', None)
         
         if is_correct:
             # CAPTCHA passed, move to channel verification
@@ -1560,7 +1594,7 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
                 db=db,
                 user_id=db_user.id if db_user else None,
                 action_type="CAPTCHA_COMPLETED",
-                description=f"User completed CAPTCHA verification",
+                description=f"User completed IMAGE CAPTCHA verification",
                 extra_data=json.dumps({"answer": user_answer})
             )
         else:
@@ -1568,7 +1602,7 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(
                 f"❌ **Incorrect Answer!**\\n\\n"
                 f"Your answer: `{user_answer}`\\n"
-                f"Please try again. Click the button below for a new CAPTCHA.",
+                f"The characters were not matching. Please try again with a new CAPTCHA.",
                 parse_mode='Markdown',
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔄 New CAPTCHA", callback_data="new_captcha")],
@@ -1582,12 +1616,12 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
                     db=db,
                     user_id=db_user.id,
                     action_type="CAPTCHA_FAILED",
-                    description=f"User failed CAPTCHA verification",
-                    extra_data=json.dumps({"user_answer": user_answer, "correct_answer": correct_answer})
+                    description=f"User failed IMAGE CAPTCHA verification",
+                    extra_data=json.dumps({"user_answer": user_answer})
                 )
             
     except Exception as e:
-        logger.error(f"Error handling CAPTCHA answer: {e}")
+        logger.error(f"Error handling IMAGE CAPTCHA answer: {e}")
         await update.message.reply_text(
             "❌ An error occurred while verifying your answer. Please try again."
         )

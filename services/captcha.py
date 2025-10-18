@@ -6,6 +6,10 @@ import string
 import logging
 from typing import Dict, Any, List
 import json
+import os
+import io
+from captcha.image import ImageCaptcha
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +68,73 @@ class CaptchaService:
         except Exception as e:
             logger.error(f"Error verifying CAPTCHA: {e}")
             return False
+
+
+class ImageCaptchaService:
+    """Service for generating image-based CAPTCHA challenges."""
+    
+    def __init__(self):
+        self.image_captcha = ImageCaptcha(width=280, height=90, fonts=None)
+        self.captcha_dir = "captcha_images"
+        if not os.path.exists(self.captcha_dir):
+            os.makedirs(self.captcha_dir)
+    
+    def generate_captcha_text(self, length: int = 6) -> str:
+        """Generate random text for CAPTCHA (numbers and letters)."""
+        characters = string.ascii_uppercase + string.digits
+        excluded = ['0', 'O', '1', 'I', 'l']
+        characters = ''.join(char for char in characters if char not in excluded)
+        return ''.join(random.choice(characters) for _ in range(length))
+    
+    async def generate_image_captcha(self) -> Dict[str, Any]:
+        """
+        Generate an image-based CAPTCHA.
+        Returns: dict with 'image_bytes', 'answer', and 'filepath'
+        """
+        try:
+            captcha_text = self.generate_captcha_text()
+            
+            data = self.image_captcha.generate(captcha_text)
+            
+            image_bytes = io.BytesIO()
+            image_bytes.write(data.getvalue())
+            image_bytes.seek(0)
+            
+            filepath = os.path.join(self.captcha_dir, f"captcha_{random.randint(1000, 9999)}.png")
+            with open(filepath, 'wb') as f:
+                f.write(image_bytes.getvalue())
+            
+            image_bytes.seek(0)
+            
+            return {
+                "type": "image",
+                "image_bytes": image_bytes,
+                "answer": captcha_text,
+                "filepath": filepath,
+                "question": "Please type the characters you see in the image above (case-insensitive):"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error generating image CAPTCHA: {e}")
+            return None
+    
+    def verify_image_captcha(self, user_answer: str, correct_answer: str) -> bool:
+        """Verify if the user's answer matches the image CAPTCHA."""
+        try:
+            return user_answer.upper().strip() == correct_answer.upper().strip()
+        except Exception as e:
+            logger.error(f"Error verifying image CAPTCHA: {e}")
+            return False
+    
+    def cleanup_captcha_image(self, filepath: str) -> None:
+        """Delete the captcha image after verification."""
+        try:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+                logger.info(f"Cleaned up CAPTCHA image: {filepath}")
+        except Exception as e:
+            logger.error(f"Error cleaning up CAPTCHA image: {e}")
+
 
 class VerificationTaskService:
     """Service for managing verification tasks like channel joins."""

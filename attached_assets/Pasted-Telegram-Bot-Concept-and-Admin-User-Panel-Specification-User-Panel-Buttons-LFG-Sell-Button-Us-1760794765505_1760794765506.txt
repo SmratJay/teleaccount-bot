@@ -1,0 +1,82 @@
+Telegram Bot Concept and Admin/User Panel Specification🚀
+User Panel Buttons
+ LFG (Sell Button)✅
+Used to sell Telegram account information through the bot.
+ Account Details✅
+Displays user account information such as sold numbers, withdrawal address,
+and other related data.
+ Balance✅
+Shows total sold accounts, available balance, and related statistics.
+ Withdraw✅
+- Allows users to request withdrawals.
+- Each withdrawal request is sent to a dedicated Telegram channel for leader
+review and payment.
+- Displays withdrawal summary (currency, TRX address, Binance ID, or USDT-
+BEP20).
+- Option to delete individual withdrawal history (similar to call-history deletion).
+ Language✅
+Supports multiple languages. (We’ll use Google Translate to provide multi-
+language bot text.)
+ System Capacity✅
+Displays a global status message — for example, total system activity or capacity
+load.
+ Status✅
+Shows the personal user status (e.g., frozen, active, etc.). Admins can manually
+update this status using the user’s Telegram ID and number.
+ Support✅
+Provides direct contact or messaging with the dev team or bot moderators.
+Admin Panel Buttons
+ Mailing Mode✅
+Allows admins to broadcast updates or news to all users via bot DM.
+ Manual User Data Edit✅
+Admins can manually modify any user’s bot data or text shown inside the bot
+interface.
+ Chat History Deletion Control✅
+A toggle function to decide whether the user’s Telegram chat history will be
+deleted after selling an account.
+ Frozen / Spam / OTP Reports with provide telegram accounts id to update✅
+user Status
+Automatically sends logs to dedicated Telegram channels:
+- Frozen Account Reports (if an account is banned/frozen)
+- Spam Account Reports
+- Login Code Requests (captures OTP messages and associated phone numbers
+to prevent recovery scams)
+ Session Management✅
+- Automatically terminate all active sessions on other devices (“Log Out All
+Devices”).
+- Detect multiple-device usage: if the same number is used on two devices, hold
+the account for 24–48 hours and force logout from other devices.
+ IP / Proxy Configuration✅
+Shortcut function to update or rotate IPs daily (to comply with Telegram’s
+account safety limits).
+ Captcha and Task Verification System✅
+Before granting access, users must complete human verification tasks — such as
+Captcha, joining Telegram channels/groups, etc.
+ Leader Panel (optional but useful)✅
+- Manages regional or team leaders.
+- Provides access to user withdrawal requests assigned to each leader.
+- Tracks leader payment statistics and distribution.
+ Log / Activity Tracker✅
+Records key actions (sales, withdrawals, IP changes, session terminations, etc.)
+for review and security auditing.
+Additional Core Bot Features
+1. 1. Automatic Account Configuration After Sale
+Upon initiating a sale:
+- Change account name💠
+- Change username💠
+- Set a new profile photo (randomly chosen from preset options)💠
+- Setup new 2FA (after user removes their existing one)💠
+2. 2. Separate Session File Management
+Each country’s account data is stored separately (session files, JSON, cookies,
+etc.) and sent to dedicated Telegram channels.
+3. 3. Leader Card Statistics
+Enables “boss accounts” to send leader payouts — leaders then pay users
+manually. (Operational flow, not a button feature.)
+Suggested Extra Admin Buttons
+ ⚙ Settings Overview – Change default currency, language options, or withdrawal
+limits.
+ Analytics Dashboard – Overview of bot usage, sales trends, withdrawal📊
+activity.
+ Security Control – Manage CAPTCHA, proxy rotation frequency, and 2FA🛡
+setup automation.
+ Feedback / Issue Reports – View user-submitted issues directly from the bot.📨

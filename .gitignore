@@ -199,6 +199,7 @@ cython_debug/
 # Project specific
 sessions/
 logs/
+captcha_images/
 *.session
 *.session-journal
 proxy_list.txt

@@ -27,3 +27,5 @@ python-telegram-bot
 sqlalchemy
 telegram
 telethon
+captcha
+Pillow
