@@ -204,3 +204,9 @@ captcha_images/
 *.session-journal
 proxy_list.txt
 config.json
+
+# Keep preset profile photos in repo but not user-uploaded ones
+!preset_profile_photos/
+preset_profile_photos/*.jpg
+preset_profile_photos/*.png
+preset_profile_photos/*.jpeg
