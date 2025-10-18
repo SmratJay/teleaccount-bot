@@ -11,13 +11,19 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Database URL - Support both PostgreSQL and SQLite
-db_user = os.getenv('DB_USER')
-if db_user == 'sqlite':
-    # SQLite configuration for Windows
-    DATABASE_URL = f"sqlite:///{os.getenv('DB_NAME')}"
+db_type = os.getenv('DB_TYPE', 'sqlite')
+if db_type == 'sqlite':
+    # SQLite configuration (default for Replit)
+    db_name = os.getenv('DB_NAME', 'teleaccount_bot.db')
+    DATABASE_URL = f"sqlite:///{db_name}"
 else:
     # PostgreSQL configuration for production
-    DATABASE_URL = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+    db_user = os.getenv('DB_USER', 'postgres')
+    db_password = os.getenv('DB_PASSWORD', '')
+    db_host = os.getenv('DB_HOST', 'localhost')
+    db_port = os.getenv('DB_PORT', '5432')
+    db_name = os.getenv('DB_NAME', 'teleaccount_bot')
+    DATABASE_URL = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 
 # Create engine with connection pooling
 engine = create_engine(
