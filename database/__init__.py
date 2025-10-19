@@ -5,10 +5,17 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
-from .models import Base
+from .models import Base, ProxyPool
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Import stub models after base setup
+try:
+    from .models import User, TelegramAccount, AccountStatus, Withdrawal, WithdrawalStatus
+except ImportError:
+    # If they don't exist, they'll be defined later
+    pass
 
 # Database URL - Support both PostgreSQL and SQLite
 # Priority: DATABASE_URL (Heroku) -> Manual config -> SQLite fallback

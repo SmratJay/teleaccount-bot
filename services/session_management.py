@@ -12,6 +12,7 @@ from telethon.errors import SessionPasswordNeededError, FloodWaitError
 from database import get_db_session, close_db_session
 from database.operations import TelegramAccountService, ActivityLogService
 from database.models import TelegramAccount, AccountStatus
+from services.account_management import account_manager
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,33 @@ class SessionManagementService:
                 results['multi_device_detected'] = True
                 logger.warning(f"Multi-device detected for account {account_id}: {results['device_count']} sessions")
                 
-                # Put account on 24-hour hold
+                # CRITICAL: Freeze account immediately due to multi-device detection
+                db = get_db_session()
+                try:
+                    freeze_result = account_manager.freeze_account(
+                        db=db,
+                        account_id=account_id,
+                        reason=f"Multi-device usage detected: {results['device_count']} active sessions",
+                        admin_id=1,  # System auto-freeze (admin_id=1 represents system)
+                        duration_hours=24  # 24-hour freeze
+                    )
+                    
+                    if freeze_result['success']:
+                        results['account_frozen'] = True
+                        results['freeze_duration'] = '24 hours'
+                        results['actions_taken'].append('account_freeze')
+                        logger.info(f"Account {account_id} frozen due to multi-device detection")
+                    
+                    # Update multi_device_last_detected timestamp
+                    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+                    if account:
+                        account.multi_device_last_detected = datetime.utcnow()
+                        db.commit()
+                
+                finally:
+                    close_db_session(db)
+                
+                # Put account on 24-hour hold (legacy support)
                 hold_result = await self._put_account_on_hold(account_id, user_id)
                 if hold_result['success']:
                     results['account_on_hold'] = True

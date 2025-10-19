@@ -14,6 +14,9 @@ httpx==0.25.2
 requests==2.31.0
 nest-asyncio==1.5.8
 
+# Scheduling & Background Tasks
+apscheduler==3.10.4
+
 # Cryptography & Security
 cryptography==41.0.7
 pycryptodome==3.19.0

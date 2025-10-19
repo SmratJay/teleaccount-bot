@@ -65,8 +65,64 @@ def main():
         logger.error("Failed to start WebApp server")
         return
     
-    # Create application
-    application = Application.builder().token(BOT_TOKEN).build()
+    # Create application with job queue enabled
+    from telegram.ext import JobQueue
+    application = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .job_queue(JobQueue())  # Explicitly enable job queue
+        .build()
+    )
+    
+    # Initialize notification service
+    from utils.notification_service import initialize_notification_service
+    notification_service = initialize_notification_service(application.bot)
+    logger.info("Notification service initialized")
+    
+    # Initialize proxy refresh scheduler
+    from services.proxy_scheduler import start_proxy_scheduler, proxy_refresh_scheduler
+    try:
+        start_proxy_scheduler()
+        logger.info("Proxy refresh scheduler initialized")
+    except Exception as e:
+        logger.warning(f"Failed to start proxy scheduler: {e}")
+    
+    # Add scheduled job for freeze expiry checks (runs every hour)
+    from services.account_management import account_manager
+    from database import get_db_session, close_db_session
+    
+    async def check_expired_freezes_job(context):
+        """Background job to check and release expired account freezes"""
+        try:
+            db = get_db_session()
+            try:
+                result = account_manager.check_and_release_expired_freezes(db)
+                if result['released_count'] > 0:
+                    logger.info(f"Auto-released {result['released_count']} expired frozen accounts")
+                    
+                    # Send notifications for unfrozen accounts
+                    for account_info in result.get('released_accounts', []):
+                        try:
+                            # Get account owner's telegram ID
+                            from database.operations import TelegramAccountService
+                            account = TelegramAccountService.get_account_by_id(db, account_info['account_id'])
+                            if account and account.user:
+                                await notification_service.notify_account_unfrozen(
+                                    user_telegram_id=account.user.telegram_user_id,
+                                    phone_number=account.phone_number,
+                                    unfreeze_reason="Freeze period expired - automatic release"
+                                )
+                        except Exception as e:
+                            logger.error(f"Error sending unfreeze notification: {e}")
+            finally:
+                close_db_session(db)
+        except Exception as e:
+            logger.error(f"Error in freeze expiry check job: {e}")
+    
+    # Schedule the job to run every hour
+    job_queue = application.job_queue
+    job_queue.run_repeating(check_expired_freezes_job, interval=3600, first=10)
+    logger.info("Scheduled hourly freeze expiry check job")
     
     # Add all handlers using the real handler setup  
     setup_real_handlers(application)

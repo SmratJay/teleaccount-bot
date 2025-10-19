@@ -152,9 +152,12 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, db_
         ]
         
         # Admin and leader panels only if user has those roles
+        logger.info(f"🔍 Admin Check for user {db_user.telegram_user_id}: is_admin={db_user.is_admin}, is_leader={db_user.is_leader}")
         if db_user.is_admin:
+            logger.info(f"✅ Adding Admin Panel button for user {db_user.telegram_user_id}")
             keyboard.append([InlineKeyboardButton("⚙️ Admin Panel", callback_data="admin_panel")])
         if db_user.is_leader:
+            logger.info(f"✅ Adding Leader Panel button for user {db_user.telegram_user_id}")
             keyboard.append([InlineKeyboardButton("👑 Leader Panel", callback_data="leader_panel")])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -806,22 +809,31 @@ Click "Sell New Account" to add your first account and start earning!
 """
         
         for i, account in enumerate(accounts, 1):
+            # Check if account is frozen
+            freeze_indicator = ""
+            if hasattr(account, 'is_frozen') and account.is_frozen:
+                freeze_indicator = " ❄️"
+            
             status_emoji = {
                 'AVAILABLE': '✅',
                 'SOLD': '💰',
                 '24_HOUR_HOLD': '⏳',
                 'PENDING_REVIEW': '🔍',
-                'REJECTED': '❌'
+                'REJECTED': '❌',
+                'FROZEN': '❄️'
             }.get(account.status.value, '❓')
             
             accounts_text += f"""
-**{i}. {account.phone_number}**
+**{i}. {account.phone_number}{freeze_indicator}**
 {status_emoji} Status: {account.status.value}
 💵 Price: ${account.sale_price:.2f}
 📅 Added: {account.created_at.strftime('%Y-%m-%d')}
 """
             if account.sold_at:
                 accounts_text += f"💰 Sold: {account.sold_at.strftime('%Y-%m-%d')}\n"
+            if freeze_indicator:
+                freeze_reason = getattr(account, 'freeze_reason', 'Security hold')
+                accounts_text += f"❄️ Frozen: {freeze_reason}\n"
             accounts_text += "\n"
         
         keyboard = [

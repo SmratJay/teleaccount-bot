@@ -11,10 +11,17 @@ import hashlib
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime, timedelta
 from telethon import TelegramClient
-from telethon.errors import FloodWaitError, PhoneNumberInvalidError
+from telethon.errors import (
+    FloodWaitError, 
+    PhoneNumberInvalidError,
+    SessionPasswordNeededError,
+    PhoneCodeInvalidError,
+    PhoneCodeExpiredError,
+    PhoneCodeHashEmptyError
+)
 # import aiohttp  # Optional - only needed for proxy testing
 # import user_agents  # Optional - for user agent rotation
-from services.proxy_manager import ProxyManager, ProxyConfig
+from services.proxy_manager import proxy_manager, ProxyConfig, OperationType
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +29,7 @@ class SecurityBypassManager:
     """Advanced security bypass techniques for Telegram login"""
     
     def __init__(self):
-        self.proxy_manager = ProxyManager()
+        self.proxy_manager = proxy_manager
         self.device_profiles = self._load_device_profiles()
         self.login_patterns = self._load_behavioral_patterns()
         self.session_cache = {}
@@ -65,8 +72,17 @@ class SecurityBypassManager:
             "session_gaps": [300, 600, 900, 1800]  # Gaps between sessions
         }
     
-    async def get_secure_proxy(self, phone_number: str) -> Optional[ProxyConfig]:
-        """Get a secure, phone-specific proxy"""
+    async def get_secure_proxy(self, phone_number: str, operation: OperationType = OperationType.LOGIN) -> Optional[ProxyConfig]:
+        """
+        Get a secure, phone-specific proxy using operation-based selection.
+        
+        Args:
+            phone_number: Phone number for proxy assignment
+            operation: Type of operation (LOGIN, ACCOUNT_CREATION, OTP_RETRIEVAL, etc.)
+        
+        Returns:
+            ProxyConfig or None
+        """
         try:
             # Generate consistent proxy for same phone to maintain IP consistency
             phone_hash = hashlib.md5(phone_number.encode()).hexdigest()
@@ -75,24 +91,44 @@ class SecurityBypassManager:
             if phone_hash in self.session_cache:
                 cached_data = self.session_cache[phone_hash]
                 if datetime.now() - cached_data['assigned_at'] < timedelta(hours=24):
+                    logger.debug(f"Using cached proxy for {phone_number}")
                     return cached_data['proxy']
             
-            # Get new unique proxy
-            proxy = self.proxy_manager.get_unique_proxy()
+            # Extract country code from phone number (first 1-3 digits)
+            country_code = None
+            if phone_number.startswith('+'):
+                # Try to extract country code
+                clean_number = phone_number[1:]
+                if clean_number[:2] in ['1', '7', '20', '27', '30', '31', '32', '33', '34', '36', '39', '40', '41', '43', '44', '45', '46', '47', '48', '49', '51', '52', '53', '54', '55', '56', '57', '58', '60', '61', '62', '63', '64', '65', '66', '81', '82', '84', '86', '90', '91', '92', '93', '94', '95', '98']:
+                    country_code = clean_number[:2]
+                elif clean_number[:1] in ['1', '7']:
+                    country_code = clean_number[:1]
+                elif clean_number[:3] in ['351', '352', '353', '354', '355', '356', '357', '358', '359', '370', '371', '372', '373', '374', '375', '376', '377', '378', '380', '381', '382', '383', '385', '386', '387', '389', '420', '421', '423']:
+                    country_code = clean_number[:3]
+            
+            # Get proxy using operation-based selection
+            logger.info(f"Getting proxy for operation: {operation.value}, phone: {phone_number[:5]}***")
+            proxy = self.proxy_manager.get_proxy_for_operation(operation, country_code)
+            
             if proxy:
                 # Verify proxy works
                 if await self._test_proxy_connectivity(proxy):
                     # Cache for consistency
                     self.session_cache[phone_hash] = {
                         'proxy': proxy,
-                        'assigned_at': datetime.now()
+                        'assigned_at': datetime.now(),
+                        'operation': operation.value
                     }
+                    logger.info(f"Assigned {proxy.host}:{proxy.port} to {phone_number[:5]}*** for {operation.value}")
                     return proxy
+                else:
+                    logger.warning(f"Proxy {proxy.host}:{proxy.port} failed connectivity test")
                     
+            logger.warning(f"No suitable proxy found for operation {operation.value}")
             return None
             
         except Exception as e:
-            logger.error(f"Error getting secure proxy: {e}")
+            logger.error(f"Error getting secure proxy: {e}", exc_info=True)
             return None
     
     async def _test_proxy_connectivity(self, proxy: ProxyConfig) -> bool:
@@ -119,11 +155,22 @@ class SecurityBypassManager:
         profile_index = int(phone_hash[:2], 16) % len(self.device_profiles)
         return self.device_profiles[profile_index].copy()
     
-    async def create_secure_client(self, phone_number: str, api_id: int, api_hash: str) -> Optional[TelegramClient]:
-        """Create a secure Telethon client with anti-detection measures"""
+    async def create_secure_client(self, phone_number: str, api_id: int, api_hash: str, operation: OperationType = OperationType.LOGIN) -> Optional[TelegramClient]:
+        """
+        Create a secure Telethon client with anti-detection measures.
+        
+        Args:
+            phone_number: Phone number for the client
+            api_id: Telegram API ID
+            api_hash: Telegram API hash
+            operation: Type of operation (affects proxy selection)
+        
+        Returns:
+            TelegramClient or None
+        """
         try:
-            # Get secure proxy
-            proxy = await self.get_secure_proxy(phone_number)
+            # Get secure proxy with operation-based selection
+            proxy = await self.get_secure_proxy(phone_number, operation)
             device_profile = self.get_device_profile(phone_number)
             
             # Create session name with device info
@@ -147,6 +194,7 @@ class SecurityBypassManager:
             
             # Add proxy if available
             if proxy:
+                logger.info(f"Using proxy {proxy.host}:{proxy.port} (type: {proxy.proxy_type}) for {operation.value}")
                 if proxy.proxy_type.upper() == 'HTTP':
                     client_kwargs['proxy'] = (proxy.host, proxy.port, proxy.username, proxy.password)
                 else:
@@ -157,6 +205,8 @@ class SecurityBypassManager:
                         'username': proxy.username,
                         'password': proxy.password
                     }
+            else:
+                logger.warning(f"No proxy available for {operation.value}, using direct connection")
             
             client = TelegramClient(session_name, **client_kwargs)
             
@@ -165,7 +215,7 @@ class SecurityBypassManager:
                 try:
                     await client.connect()
                     if client.is_connected():
-                        logger.info(f"Secure client created for {phone_number}")
+                        logger.info(f"Secure client created for {phone_number} ({operation.value})")
                         return client
                 except Exception as e:
                     if attempt < 2:
@@ -176,11 +226,18 @@ class SecurityBypassManager:
             return None
             
         except Exception as e:
-            logger.error(f"Error creating secure client: {e}")
+            logger.error(f"Error creating secure client: {e}", exc_info=True)
             return None
     
-    async def human_like_otp_request(self, client: TelegramClient, phone_number: str) -> Dict[str, Any]:
-        """Send OTP request with human-like behavior"""
+    async def human_like_otp_request(self, client: TelegramClient, phone_number: str, force_sms: bool = True) -> Dict[str, Any]:
+        """
+        Send OTP request with human-like behavior
+        
+        Args:
+            client: Telegram client
+            phone_number: Phone number to send OTP to
+            force_sms: If True, forces SMS delivery instead of Telegram app (RECOMMENDED to avoid security blocks)
+        """
         try:
             # Add random delay to simulate user thinking
             thinking_delay = random.choice(self.login_patterns['thinking_pauses'])
@@ -195,16 +252,27 @@ class SecurityBypassManager:
             # Send OTP with retry logic
             for attempt in range(3):
                 try:
-                    result = await client.send_code_request(phone_number)
+                    # CRITICAL: Force SMS delivery to avoid "code was shared" detection
+                    # When force_sms=True, Telegram sends code via SMS, not to Telegram app
+                    # This prevents Telegram from seeing the code was "exposed/shared"
+                    if force_sms:
+                        logger.info(f"Forcing SMS delivery for {phone_number} (security bypass)")
+                        result = await client.send_code_request(phone_number, force_sms=True)
+                    else:
+                        result = await client.send_code_request(phone_number)
                     
                     # Log successful request
                     self._log_otp_request(phone_number)
                     
+                    delivery_method = "SMS" if force_sms else result.type.__class__.__name__
+                    logger.info(f"OTP sent to {phone_number} via {delivery_method}")
+                    
                     return {
                         'success': True,
                         'phone_code_hash': result.phone_code_hash,
-                        'type': result.type.__class__.__name__,
-                        'message': 'OTP sent successfully'
+                        'type': delivery_method,
+                        'message': f'OTP sent via {delivery_method}',
+                        'force_sms': force_sms
                     }
                     
                 except FloodWaitError as e:
@@ -241,43 +309,135 @@ class SecurityBypassManager:
     
     async def human_like_code_entry(self, client: TelegramClient, phone_number: str, 
                                    phone_code_hash: str, code: str) -> Dict[str, Any]:
-        """Enter OTP code with human-like timing"""
+        """Enter OTP code with ULTRA-realistic human-like timing to bypass security"""
         try:
-            # Simulate human typing delays
+            # 1. REALISTIC PRE-READING DELAY (REDUCED to avoid code expiry)
+            # Simulate user opening SMS app, finding the code, and focusing
+            pre_reading_delay = random.uniform(1.0, 2.5)  # Reduced from 3.0-7.5 to avoid code expiry
+            logger.debug(f"Simulating code reading time: {pre_reading_delay:.2f}s")
+            await asyncio.sleep(pre_reading_delay)
+            
+            # 2. REALISTIC CHARACTER-BY-CHARACTER TYPING (FASTER)
+            # Humans don't type at constant speed - they have variations
             total_delay = 0
-            for digit in code:
-                delay = random.choice(self.login_patterns['typing_delays'])
-                await asyncio.sleep(delay)
-                total_delay += delay
+            code_length = len(code)
             
-            # Add final thinking pause before submission
-            final_pause = random.choice(self.login_patterns['thinking_pauses'])
-            await asyncio.sleep(final_pause)
+            for i, digit in enumerate(code):
+                # Base typing speed with natural variation (FASTER to avoid expiry)
+                if i == 0:
+                    # First digit: slower (user just started typing)
+                    base_delay = random.uniform(0.15, 0.28)  # Was 0.25-0.45
+                elif i < 3:
+                    # First few digits: medium speed
+                    base_delay = random.uniform(0.12, 0.22)  # Was 0.18-0.32
+                else:
+                    # Later digits: faster (muscle memory kicks in)
+                    base_delay = random.uniform(0.08, 0.15)  # Was 0.12-0.22
+                
+                # Add micro-pauses (humans aren't perfectly consistent)
+                micro_pause = random.uniform(-0.03, 0.05)  # Reduced variation
+                final_delay = max(0.06, base_delay + micro_pause)
+                
+                await asyncio.sleep(final_delay)
+                total_delay += final_delay
             
-            # Attempt login with the code
-            result = await client.sign_in(phone_number, code, phone_code_hash=phone_code_hash)
+            # 3. REALISTIC DOUBLE-CHECK PAUSE (REDUCED)
+            # User looks at what they typed, compares with code
+            double_check_pause = random.uniform(0.5, 1.5)  # Was 1.2-3.5
+            logger.debug(f"Simulating double-check pause: {double_check_pause:.2f}s")
+            await asyncio.sleep(double_check_pause)
             
-            # Get user info
-            me = await client.get_me()
+            # 4. REALISTIC SUBMISSION DELAY
+            # User moves mouse/finger to submit button
+            submission_delay = random.uniform(0.2, 0.6)  # Was 0.3-0.9
+            await asyncio.sleep(submission_delay)
             
-            return {
-                'success': True,
-                'user_info': {
-                    'id': me.id,
-                    'phone': me.phone,
-                    'username': me.username,
-                    'first_name': me.first_name,
-                    'last_name': me.last_name,
-                },
-                'message': 'Login successful',
-                'timing_info': {
-                    'typing_time': total_delay,
-                    'thinking_time': final_pause
+            total_time = pre_reading_delay + total_delay + double_check_pause + submission_delay
+            logger.info(f"Total realistic timing: {total_time:.2f}s (reading={pre_reading_delay:.2f}s, typing={total_delay:.2f}s, checking={double_check_pause:.2f}s)")
+            
+            # 5. ATTEMPT LOGIN WITH THE CODE
+            try:
+                result = await client.sign_in(phone_number, code, phone_code_hash=phone_code_hash)
+                
+                # CRITICAL: Verify session is ACTUALLY authorized
+                # Telegram might complete sign_in but block authorization server-side
+                await asyncio.sleep(0.5)  # Small delay for server to process
+                
+                is_authorized = await client.is_user_authorized()
+                if not is_authorized:
+                    logger.error(f"Sign-in completed but user NOT authorized for {phone_number}")
+                    logger.error("This indicates Telegram's security system blocked the login")
+                    return {
+                        'success': False,
+                        'error': 'security_block',
+                        'message': '⚠️ Security Check Failed\n\n'
+                                   'Telegram blocked this login attempt. This can happen when:\n'
+                                   '• The verification code was viewed in Telegram app\n'
+                                   '• The code was shared or copied\n'
+                                   '• Multiple login attempts detected\n\n'
+                                   '💡 Try receiving the code via SMS instead of Telegram app.',
+                        'security_blocked': True
+                    }
+                
+                # Get user info
+                me = await client.get_me()
+                
+                logger.info(f"Successfully authorized user {me.id} ({me.phone})")
+                
+                return {
+                    'success': True,
+                    'user_info': {
+                        'id': me.id,
+                        'phone': me.phone,
+                        'username': me.username,
+                        'first_name': me.first_name,
+                        'last_name': me.last_name,
+                    },
+                    'message': 'Login successful',
+                    'timing_info': {
+                        'reading_time': pre_reading_delay,
+                        'typing_time': total_delay,
+                        'checking_time': double_check_pause,
+                        'total_time': total_time
+                    }
                 }
-            }
+                
+            except SessionPasswordNeededError:
+                # Account has 2FA enabled
+                logger.info(f"2FA detected for {phone_number}")
+                return {
+                    'success': False,
+                    'error': '2fa_required',
+                    'message': 'This account has Two-Factor Authentication enabled. Password required.',
+                    'requires_2fa': True
+                }
+                
+            except PhoneCodeInvalidError:
+                logger.warning(f"Invalid code entered for {phone_number}")
+                return {
+                    'success': False,
+                    'error': 'invalid_code',
+                    'message': 'The verification code you entered is incorrect.'
+                }
+                
+            except PhoneCodeExpiredError:
+                logger.warning(f"Expired code for {phone_number}")
+                return {
+                    'success': False,
+                    'error': 'code_expired',
+                    'message': 'The verification code has expired. Please request a new one.'
+                }
+                
+            except PhoneCodeHashEmptyError:
+                logger.error(f"Code hash empty for {phone_number}")
+                return {
+                    'success': False,
+                    'error': 'session_error',
+                    'message': 'Session error. Please start the process again.'
+                }
             
         except Exception as e:
-            logger.error(f"Error in human-like code entry: {e}")
+            logger.error(f"Error in human-like code entry: {type(e).__name__}: {e}")
             return {
                 'success': False,
                 'error': str(type(e).__name__),
