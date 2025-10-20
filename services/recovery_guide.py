@@ -231,3 +231,4 @@ The account is legitimate, but Telegram needs time to "trust" it again.
 
 # Global instance
 recovery_guide = FlaggedAccountRecovery()
+

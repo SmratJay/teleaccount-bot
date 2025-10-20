@@ -1,0 +1,25 @@
+{
+  "phone": "+919821757044",
+  "phone_clean": "919821757044",
+  "country_code": "IN",
+  "session_file": "919821757044_20251020_154052.session",
+  "created_at": "2025-10-20T15:40:52.795837",
+  "status": "sold",
+  "has_2fa": false,
+  "username": null,
+  "user_id": null,
+  "last_activity": null,
+  "account_id": 42,
+  "seller_id": 7,
+  "seller_telegram_id": 999999,
+  "sale_price": 100.0,
+  "changes": [
+    "name_changed"
+  ],
+  "twofa_set": false,
+  "terminated_sessions": true,
+  "device_count": 1,
+  "multi_device_detected": false,
+  "distributed_at": "2025-10-20T10:10:52.773612+00:00",
+  "note": "unit-test"
+}

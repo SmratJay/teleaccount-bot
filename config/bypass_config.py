@@ -148,3 +148,4 @@ BYPASS_LOGGING = {
     'log_errors': True,
     'verbose': False,  # Set True for detailed logs
 }
+

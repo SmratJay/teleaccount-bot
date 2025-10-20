@@ -230,3 +230,4 @@ if __name__ == "__main__":
     
     print("\n🔑 Current encryption key (for .env):")
     print(f"ENCRYPTION_KEY={get_encryption_key()}")
+

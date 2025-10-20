@@ -732,3 +732,4 @@ async def delete_profile_photos(client: TelegramClient, delete_all: bool = False
     except Exception as e:
         logger.error(f"❌ Error deleting profile photos: {e}")
         return False
+

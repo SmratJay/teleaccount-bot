@@ -42,3 +42,4 @@ try:
         
 finally:
     close_db_session(db)
+

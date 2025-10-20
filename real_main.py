@@ -7,7 +7,7 @@ import logging
 import os
 from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler
-from handlers.real_handlers import setup_real_handlers
+from handlers import setup_all_handlers  # Unified handler entry point
 
 # Configure detailed logging with Unicode support
 logging.basicConfig(
@@ -124,8 +124,8 @@ def main():
     job_queue.run_repeating(check_expired_freezes_job, interval=3600, first=10)
     logger.info("Scheduled hourly freeze expiry check job")
     
-    # Add all handlers using the real handler setup  
-    setup_real_handlers(application)
+    # Register all bot handlers through unified entry point
+    setup_all_handlers(application)
     
     logger.info("REAL Telegram Account Selling Bot Started!")
     logger.info("Features: Real OTP -> Real Login -> Real Account Transfer")

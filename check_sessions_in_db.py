@@ -32,3 +32,4 @@ if count > 0:
         print(f"  ID: {acc[0]}, Phone: {acc[1]}, Status: {acc[2]}, Session: {has_session}")
 
 conn.close()
+

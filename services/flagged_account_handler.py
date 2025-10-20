@@ -305,3 +305,4 @@ def get_flagged_handler_instance():
     if flagged_handler_instance is None:
         flagged_handler_instance = FlaggedAccountHandler()
     return flagged_handler_instance
+

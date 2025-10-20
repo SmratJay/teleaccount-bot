@@ -4,14 +4,19 @@ Handles automatic session termination, multi-device detection, and account holds
 """
 import logging
 import asyncio
+import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from telethon import TelegramClient
 from telethon.tl.functions.auth import LogOutRequest
 from telethon.errors import SessionPasswordNeededError, FloodWaitError
 from database import get_db_session, close_db_session
-from database.operations import TelegramAccountService, ActivityLogService
-from database.models import TelegramAccount, AccountStatus
+from database.operations import (
+    TelegramAccountService,
+    ActivityLogService,
+    SystemSettingsService,
+)
+from database.models import TelegramAccount, AccountStatus, ActivityLog
 from services.account_management import account_manager
 
 logger = logging.getLogger(__name__)
@@ -50,17 +55,27 @@ class SessionManagementService:
                 # CRITICAL: Freeze account immediately due to multi-device detection
                 db = get_db_session()
                 try:
+                    hold_hours_setting = SystemSettingsService.get_setting(
+                        db, 'multi_device_hold_hours', default=24
+                    )
+                    try:
+                        hold_hours = int(hold_hours_setting)
+                    except (TypeError, ValueError):
+                        hold_hours = 24
+
                     freeze_result = account_manager.freeze_account(
                         db=db,
                         account_id=account_id,
                         reason=f"Multi-device usage detected: {results['device_count']} active sessions",
                         admin_id=1,  # System auto-freeze (admin_id=1 represents system)
-                        duration_hours=24  # 24-hour freeze
+                        duration_hours=hold_hours
                     )
                     
                     if freeze_result['success']:
                         results['account_frozen'] = True
-                        results['freeze_duration'] = '24 hours'
+                        results['freeze_duration'] = (
+                            f"{hold_hours} hours" if hold_hours else 'indefinite'
+                        )
                         results['actions_taken'].append('account_freeze')
                         logger.info(f"Account {account_id} frozen due to multi-device detection")
                     
@@ -73,8 +88,8 @@ class SessionManagementService:
                 finally:
                     close_db_session(db)
                 
-                # Put account on 24-hour hold (legacy support)
-                hold_result = await self._put_account_on_hold(account_id, user_id)
+                # Put account on timed hold for redundancy with legacy flows
+                hold_result = await self._put_account_on_hold(account_id, user_id, hold_hours)
                 if hold_result['success']:
                     results['account_on_hold'] = True
                     results['actions_taken'].append('account_hold')
@@ -163,32 +178,46 @@ class SessionManagementService:
                 'terminated_count': 0
             }
     
-    async def _put_account_on_hold(self, account_id: int, user_id: int) -> Dict[str, Any]:
+    async def _put_account_on_hold(self, account_id: int, user_id: int, hold_hours: int) -> Dict[str, Any]:
         """Put account on 24-hour hold due to multi-device detection"""
         try:
             db = get_db_session()
             try:
-                # Update account status in database
-                success = TelegramAccountService.set_account_hold(db, account_id, hold_hours=24)
+                hold_result = TelegramAccountService.set_account_hold(
+                    db,
+                    account_id,
+                    hold_hours=hold_hours,
+                    reason='Multi-device usage detected',
+                )
                 
-                if success:
+                if hold_result.get('success'):
                     # Log the hold action
                     ActivityLogService.log_action(
-                        db, user_id, "ACCOUNT_HOLD",
-                        f"Account {account_id} placed on 24-hour hold due to multi-device detection"
+                        db,
+                        user_id,
+                        "ACCOUNT_HOLD",
+                        f"Account {account_id} placed on hold due to multi-device detection",
+                        extra_data=json.dumps({
+                            "hold_hours": hold_hours,
+                            "hold_until": hold_result.get('hold_until').isoformat() if hold_result.get('hold_until') else None,
+                        })
                     )
                     
-                    logger.info(f"Account {account_id} placed on 24-hour hold")
+                    logger.info(
+                        "Account %s placed on %s-hour hold",
+                        account_id,
+                        hold_hours,
+                    )
                     
                     return {
                         'success': True,
-                        'hold_until': datetime.utcnow() + timedelta(hours=24),
+                        'hold_until': hold_result.get('hold_until'),
                         'reason': 'Multi-device detection'
                     }
                 else:
                     return {
                         'success': False,
-                        'error': 'Failed to update account status in database'
+                        'error': hold_result.get('error', 'Failed to update account status in database')
                     }
                     
             finally:
@@ -305,13 +334,13 @@ class SessionManagementService:
                 ).count()
                 
                 # Get recent session activities
-                recent_activities = db.query(ActivityLogService).filter(
-                    ActivityLogService.action_type.in_([
+                recent_activities = db.query(ActivityLog).filter(
+                    ActivityLog.action_type.in_([
                         'SESSION_MONITORED', 'ACCOUNT_HOLD', 'ACCOUNT_RELEASED', 
                         'ALL_SESSIONS_TERMINATED'
                     ])
                 ).filter(
-                    ActivityLogService.created_at >= datetime.utcnow() - timedelta(days=7)
+                    ActivityLog.created_at >= datetime.utcnow() - timedelta(days=7)
                 ).count()
                 
                 return {

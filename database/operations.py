@@ -175,91 +175,253 @@ class ProxyService:
             return 0
 
 
-# Stub services for real_handlers.py compatibility
+# Database service classes for handlers
 # These are placeholders until full user/account system is implemented
 
 class UserService:
-    """Stub service for user operations."""
+    """Service for user database operations."""
     
     @staticmethod
-    def get_or_create_user(db: Session, telegram_id: int, username: str = None):
-        """Stub: Returns a mock user object."""
-        logger.warning("UserService.get_or_create_user called - using stub implementation")
+    def get_or_create_user(db: Session, telegram_id: int, username: str = None, first_name: str = None, last_name: str = None):
+        """Get existing user or create new one."""
         from database.models import User
-        return User(telegram_id=telegram_id, username=username)
+        
+        user = db.query(User).filter(User.telegram_user_id == telegram_id).first()
+        
+        if not user:
+            user = User(
+                telegram_user_id=telegram_id,
+                username=username,
+                first_name=first_name,
+                last_name=last_name
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            logger.info(f"Created new user {telegram_id}")
+        else:
+            # Update username if changed
+            if username and user.username != username:
+                user.username = username
+                db.commit()
+                
+        return user
     
     @staticmethod
     def get_user_by_telegram_id(db: Session, telegram_id: int):
         """Get user by telegram ID from database."""
-        try:
-            from database.models_old import User as DBUser
-            user = db.query(DBUser).filter(DBUser.telegram_user_id == telegram_id).first()
-            if user:
-                logger.debug(f"UserService: Found user {telegram_id} in database")
-                return user
-            else:
-                logger.warning(f"UserService: User {telegram_id} not found in database, returning stub")
-                from database.models import User
-                return User(telegram_id=telegram_id, username=None)
-        except Exception as e:
-            logger.error(f"UserService.get_user_by_telegram_id error: {e}")
-            from database.models import User
-            return User(telegram_id=telegram_id, username=None)
+        from database.models import User
+        
+        user = db.query(User).filter(User.telegram_user_id == telegram_id).first()
+        return user
     
     @staticmethod
     def update_user(db: Session, user_id: int, **kwargs):
-        """Stub: Does nothing."""
-        logger.warning("UserService.update_user called - using stub implementation")
+        """Update user fields by database ID."""
+        from database.models import User
+        
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            logger.warning(f"User {user_id} not found for update")
+            return False
+        
+        for key, value in kwargs.items():
+            if hasattr(user, key):
+                setattr(user, key, value)
+        
+        db.commit()
+        db.refresh(user)
+        logger.info(f"Updated user {user_id}: {kwargs}")
         return True
     
     @staticmethod
     def update_balance(db: Session, user_id: int, amount: float):
-        """Stub: Does nothing."""
-        logger.warning("UserService.update_balance called - using stub implementation")
+        """Update user balance by database ID."""
+        from database.models import User
+        
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            logger.warning(f"User {user_id} not found for balance update")
+            return False
+        
+        user.balance = amount
+        db.commit()
+        logger.info(f"Updated user {user_id} balance to {amount}")
         return True
     
     @staticmethod
     def get_user(db: Session, user_id: int):
-        """Stub: Returns mock user."""
-        logger.warning("UserService.get_user called - using stub implementation")
+        """Get user by database ID."""
         from database.models import User
-        return User(telegram_id=user_id, username=None)
+        
+        user = db.query(User).filter(User.id == user_id).first()
+        return user
 
 
 class TelegramAccountService:
-    """Stub service for telegram account operations."""
+    """Service for telegram account operations."""
     
     @staticmethod
-    def create_account(db: Session, user_id: int, phone: str, **kwargs):
-        """Stub: Returns mock account."""
-        logger.warning("TelegramAccountService.create_account called - using stub implementation")
-        from database.models import TelegramAccount
-        return TelegramAccount(phone_number=phone, user_id=user_id)
+    def create_account(db: Session, seller_id: int, phone: str, **kwargs):
+        """
+        Create a new Telegram account record.
+        
+        Args:
+            db: Database session
+            seller_id: User ID of the seller
+            phone: Phone number
+            **kwargs: Additional account fields
+            
+        Returns:
+            TelegramAccount object
+        """
+        from database.models import TelegramAccount, AccountStatus
+        
+        account = TelegramAccount(
+            seller_id=seller_id,
+            phone_number=phone,
+            country_code=kwargs.get('country_code'),
+            status=kwargs.get('status', AccountStatus.AVAILABLE.value),
+            session_string=kwargs.get('session_string'),
+            two_fa_password=kwargs.get('two_fa_password'),
+            original_account_name=kwargs.get('original_account_name'),
+            original_username=kwargs.get('original_username'),
+            original_bio=kwargs.get('original_bio'),
+            sale_price=kwargs.get('sale_price', 0.0)
+        )
+        
+        db.add(account)
+        db.commit()
+        db.refresh(account)
+        logger.info(f"Created account {account.id} for phone {phone}")
+        return account
     
     @staticmethod
     def get_user_accounts(db: Session, user_id: int):
-        """Stub: Returns empty list."""
-        logger.warning("TelegramAccountService.get_user_accounts called - using stub implementation")
-        return []
+        """Get all accounts owned by a user."""
+        from database.models import TelegramAccount
+        
+        accounts = db.query(TelegramAccount).filter(
+            TelegramAccount.seller_id == user_id
+        ).all()
+        
+        return accounts
     
     @staticmethod
     def get_account(db: Session, account_id: int):
-        """Stub: Returns mock account."""
-        logger.warning("TelegramAccountService.get_account called - using stub implementation")
+        """Get account by ID."""
         from database.models import TelegramAccount
-        return TelegramAccount(phone_number="+1234567890", user_id=1)
+        
+        account = db.query(TelegramAccount).filter(
+            TelegramAccount.id == account_id
+        ).first()
+        
+        return account
+    
+    @staticmethod
+    def get_account_by_phone(db: Session, phone: str):
+        """Get account by phone number."""
+        from database.models import TelegramAccount
+        
+        account = db.query(TelegramAccount).filter(
+            TelegramAccount.phone_number == phone
+        ).first()
+        
+        return account
+
+    @staticmethod
+    def set_account_hold(db: Session, account_id: int, hold_hours: int = 24, reason: str | None = None):
+        """Place an account on timed hold and record metadata."""
+        from database.models import TelegramAccount, AccountStatus
+
+        try:
+            account = db.query(TelegramAccount).filter(
+                TelegramAccount.id == account_id
+            ).with_for_update().first()
+
+            if not account:
+                logger.warning("Account %s not found for hold", account_id)
+                return {'success': False, 'error': 'account_not_found'}
+
+            now = datetime.utcnow()
+            hold_until = None
+            if hold_hours and hold_hours > 0:
+                hold_until = now + timedelta(hours=hold_hours)
+
+            account.status = AccountStatus.TWENTY_FOUR_HOUR_HOLD
+            account.hold_until = hold_until
+            account.multi_device_detected = True
+            if reason:
+                account.freeze_reason = reason
+            account.updated_at = now
+
+            db.commit()
+
+            return {
+                'success': True,
+                'account_id': account_id,
+                'hold_until': hold_until,
+                'hold_hours': hold_hours
+            }
+        except Exception as exc:
+            logger.error("Failed to place account %s on hold: %s", account_id, exc)
+            db.rollback()
+            return {'success': False, 'error': str(exc)}
     
     @staticmethod
     def update_account(db: Session, account_id: int, **kwargs):
-        """Stub: Does nothing."""
-        logger.warning("TelegramAccountService.update_account called - using stub implementation")
+        """Update account fields."""
+        from database.models import TelegramAccount
+        
+        account = db.query(TelegramAccount).filter(
+            TelegramAccount.id == account_id
+        ).first()
+        
+        if not account:
+            logger.warning(f"Account {account_id} not found")
+            return False
+        
+        # Update fields
+        for key, value in kwargs.items():
+            if hasattr(account, key):
+                setattr(account, key, value)
+        
+        db.commit()
+        db.refresh(account)
+        logger.info(f"Updated account {account_id}")
         return True
     
     @staticmethod
     def get_available_accounts(db: Session, limit: int = 10):
-        """Stub: Returns empty list."""
-        logger.warning("TelegramAccountService.get_available_accounts called - using stub implementation")
-        return []
+        """Get available accounts for sale."""
+        from database.models import TelegramAccount, AccountStatus
+        
+        accounts = db.query(TelegramAccount).filter(
+            TelegramAccount.status == AccountStatus.AVAILABLE.value,
+            TelegramAccount.can_be_sold == True
+        ).limit(limit).all()
+        
+        return accounts
+    
+    @staticmethod
+    def mark_as_sold(db: Session, account_id: int, buyer_telegram_id: int = None):
+        """Mark account as sold."""
+        from database.models import TelegramAccount, AccountStatus
+        from datetime import datetime, timezone
+        
+        account = db.query(TelegramAccount).filter(
+            TelegramAccount.id == account_id
+        ).first()
+        
+        if not account:
+            return False
+        
+        account.status = AccountStatus.SOLD.value
+        account.sold_at = datetime.now(timezone.utc)
+        
+        db.commit()
+        logger.info(f"Marked account {account_id} as sold")
+        return True
     
     @staticmethod
     async def enable_2fa(session_file: str, api_id: int, api_hash: str, password: str, hint: str = "", email: str = None):
@@ -405,7 +567,7 @@ class SystemSettingsService:
     def get_setting(db: Session, key: str, default=None):
         """Get a system setting by key."""
         try:
-            from database.models_old import SystemSettings
+            from database.models import SystemSettings
             setting = db.query(SystemSettings).filter(SystemSettings.key == key).first()
             if setting:
                 # Try to convert to appropriate type
@@ -428,7 +590,7 @@ class SystemSettingsService:
     def set_setting(db: Session, key: str, value, description: str = None):
         """Set a system setting."""
         try:
-            from database.models_old import SystemSettings
+            from database.models import SystemSettings
             import json
             
             # Convert value to string (JSON for complex types)
@@ -465,7 +627,7 @@ class SystemSettingsService:
     def get_all_settings(db: Session):
         """Get all system settings."""
         try:
-            from database.models_old import SystemSettings
+            from database.models import SystemSettings
             return db.query(SystemSettings).all()
         except Exception as e:
             logger.error(f"Error getting all settings: {e}")
@@ -475,7 +637,7 @@ class SystemSettingsService:
     def delete_setting(db: Session, key: str):
         """Delete a system setting."""
         try:
-            from database.models_old import SystemSettings
+            from database.models import SystemSettings
             setting = db.query(SystemSettings).filter(SystemSettings.key == key).first()
             if setting:
                 db.delete(setting)
@@ -489,35 +651,92 @@ class SystemSettingsService:
 
 
 class WithdrawalService:
-    """Stub service for withdrawal operations."""
+    """Service for withdrawal database operations."""
     
     @staticmethod
     def create_withdrawal(db: Session, user_id: int, amount: float, **kwargs):
-        """Stub: Returns mock withdrawal."""
-        logger.warning("WithdrawalService.create_withdrawal called - using stub implementation")
-        from database.models_old import Withdrawal
-        # Create withdrawal with keyword arguments (SQLAlchemy requirement)
+        """Create a new withdrawal request."""
+        from database.models import Withdrawal, WithdrawalStatus
+        
+        # Default status if not provided
+        if 'status' not in kwargs:
+            kwargs['status'] = WithdrawalStatus.PENDING
+        
         withdrawal = Withdrawal(user_id=user_id, amount=amount, **kwargs)
         db.add(withdrawal)
         db.commit()
         db.refresh(withdrawal)
+        logger.info(f"Created withdrawal {withdrawal.id} for user {user_id}: {amount}")
         return withdrawal
     
     @staticmethod
-    def get_user_withdrawals(db: Session, user_id: int):
-        """Stub: Returns empty list."""
-        logger.warning("WithdrawalService.get_user_withdrawals called - using stub implementation")
-        return []
+    def get_user_withdrawals(db: Session, user_id: int, limit: int = 50):
+        """Get all withdrawal requests for a user."""
+        from database.models import Withdrawal
+        
+        withdrawals = db.query(Withdrawal).filter(
+            Withdrawal.user_id == user_id
+        ).order_by(Withdrawal.created_at.desc()).limit(limit).all()
+        
+        return withdrawals
+    
+    @staticmethod
+    def get_withdrawal(db: Session, withdrawal_id: int):
+        """Get withdrawal by ID."""
+        from database.models import Withdrawal
+        return db.query(Withdrawal).filter(Withdrawal.id == withdrawal_id).first()
+    
+    @staticmethod
+    def update_withdrawal_status(db: Session, withdrawal_id: int, status, admin_notes: str = None):
+        """Update withdrawal status."""
+        from database.models import Withdrawal
+        
+        withdrawal = db.query(Withdrawal).filter(Withdrawal.id == withdrawal_id).first()
+        if not withdrawal:
+            logger.warning(f"Withdrawal {withdrawal_id} not found")
+            return False
+        
+        withdrawal.status = status
+        if admin_notes:
+            withdrawal.admin_notes = admin_notes
+        
+        db.commit()
+        logger.info(f"Updated withdrawal {withdrawal_id} status to {status}")
+        return True
+    
+    @staticmethod
+    def get_pending_withdrawals(db: Session, limit: int = 100):
+        """Get all pending withdrawal requests."""
+        from database.models import Withdrawal, WithdrawalStatus
+        
+        return db.query(Withdrawal).filter(
+            Withdrawal.status == WithdrawalStatus.PENDING
+        ).order_by(Withdrawal.created_at.asc()).limit(limit).all()
 
 
 class ActivityLogService:
-    """Stub service for activity logging."""
+    """Service for activity logging operations."""
     
     @staticmethod
     def log_activity(db: Session, user_id: int, action: str, details: str = None, **kwargs):
-        """Stub: Does nothing. Accepts any extra kwargs for compatibility."""
-        logger.debug(f"ActivityLogService.log_activity: user={user_id}, action={action}")
-        return True
+        """Log user activity to database."""
+        from database.models import ActivityLog
+        
+        try:
+            activity = ActivityLog(
+                user_id=user_id,
+                action=action,
+                details=details,
+                **kwargs
+            )
+            db.add(activity)
+            db.commit()
+            logger.debug(f"Logged activity: user={user_id}, action={action}")
+            return True
+        except Exception as e:
+            logger.error(f"Error logging activity: {e}")
+            db.rollback()
+            return False
     
     @staticmethod
     def log_action(db: Session, user_id: int, action: str, description: str = None, **kwargs):
@@ -527,18 +746,72 @@ class ActivityLogService:
     
     @staticmethod
     def get_user_activity(db: Session, user_id: int, limit: int = 50):
-        """Stub: Returns empty list."""
-        logger.debug(f"ActivityLogService.get_user_activity: user={user_id}, limit={limit}")
-        return []
+        """Get user activity logs."""
+        from database.models import ActivityLog
+        
+        return db.query(ActivityLog).filter(
+            ActivityLog.user_id == user_id
+        ).order_by(ActivityLog.created_at.desc()).limit(limit).all()
+    
+    @staticmethod
+    def get_all_activity(db: Session, limit: int = 100):
+        """Get all activity logs for admin review."""
+        from database.models import ActivityLog
+        
+        return db.query(ActivityLog).order_by(
+            ActivityLog.created_at.desc()
+        ).limit(limit).all()
 
 
 class VerificationService:
+    """Service for verification task operations."""
+    
     @staticmethod
-    def create_verification(db, user_id, verification_type, **kwargs):
-        logger.warning('VerificationService.create_verification called - using stub')
-        return type('Verification', (), {'id': 1, 'user_id': user_id, 'status': 'pending'})()
+    def create_verification(db: Session, user_id: int, verification_type: str, **kwargs):
+        """Create a new verification task."""
+        from database.models import VerificationTask
+        
+        verification = VerificationTask(
+            user_id=user_id,
+            task_type=verification_type,
+            **kwargs
+        )
+        db.add(verification)
+        db.commit()
+        db.refresh(verification)
+        logger.info(f"Created verification task {verification.id} for user {user_id}")
+        return verification
+    
     @staticmethod
-    def get_user_verifications(db, user_id):
-        logger.warning('VerificationService.get_user_verifications called - using stub')
-        return []
+    def get_user_verifications(db: Session, user_id: int, limit: int = 50):
+        """Get all verification tasks for a user."""
+        from database.models import VerificationTask
+        
+        return db.query(VerificationTask).filter(
+            VerificationTask.user_id == user_id
+        ).order_by(VerificationTask.created_at.desc()).limit(limit).all()
+    
+    @staticmethod
+    def update_verification_status(db: Session, verification_id: int, status: str, **kwargs):
+        """Update verification status."""
+        from database.models import VerificationTask
+        
+        verification = db.query(VerificationTask).filter(
+            VerificationTask.id == verification_id
+        ).first()
+        
+        if not verification:
+            logger.warning(f"Verification {verification_id} not found")
+            return False
+        
+        verification.status = status
+        for key, value in kwargs.items():
+            if hasattr(verification, key):
+                setattr(verification, key, value)
+        
+        db.commit()
+        logger.info(f"Updated verification {verification_id} status to {status}")
+        return True
+
+
 

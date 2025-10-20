@@ -59,7 +59,8 @@ class RealTelegramService:
             phone_number: Phone number to send OTP to
             force_sms: If True (default), forces SMS delivery to avoid security blocks
         
-        Returns session info for continuing the process.
+        Returns:
+            Dict[str, Any]: Session info for continuing the process.
         """
         try:
             logger.info(f"Sending secure OTP to {phone_number} (force_sms={force_sms})")
@@ -147,6 +148,50 @@ class RealTelegramService:
             logger.warning(f"Standard method failed. Trying bypass system...")
             return await self._send_code_with_bypass(phone_number)
     
+    async def get_client_from_session(self, session_key: str) -> Optional[TelegramClient]:
+        """Retrieve a connected Telegram client for an existing session."""
+        # Return cached client when possible
+        client = self.clients.get(session_key)
+        if client:
+            try:
+                if not client.is_connected():
+                    await client.connect()
+                return client
+            except Exception as exc:
+                logger.warning(
+                    "Cached client unavailable for session %s: %s", session_key, exc
+                )
+
+        session_file_path = f"{session_key}.session"
+        if not os.path.exists(session_file_path):
+            logger.warning(
+                "Session file missing for %s; cannot restore Telegram client", session_key
+            )
+            return None
+
+        client = TelegramClient(session_key, self.api_id, self.api_hash)
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                logger.warning(
+                    "Session %s is not authorized; forcing restart of verification", session_key
+                )
+                await client.disconnect()
+                return None
+
+            self.clients[session_key] = client
+            return client
+        except Exception as exc:
+            logger.error(
+                "Failed to hydrate Telegram client for session %s: %s", session_key, exc,
+                exc_info=True
+            )
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+            return None
+
     async def _send_code_with_bypass(self, phone_number: str) -> Dict[str, Any]:
         """
         Send code using advanced bypass system for flagged accounts
@@ -189,7 +234,27 @@ class RealTelegramService:
                 'message': f'Bypass system error: {str(e)}'
             }
     
-    async def verify_code_and_login(self, session_key: str, phone_number: str, 
+    async def verify_code(self, *, phone_number: str, code: str,
+                          phone_code_hash: str, session_key: Optional[str] = None) -> Dict[str, Any]:
+        """Compatibility wrapper used by conversations to verify OTP codes."""
+        resolved_session_key = session_key or f"{phone_number}_{phone_code_hash}"
+
+        result = await self.verify_code_and_login(
+            session_key=resolved_session_key,
+            phone_number=phone_number,
+            phone_code_hash=phone_code_hash,
+            code=code
+        )
+
+        if result.get('success'):
+            # Align with handler expectations
+            requires_2fa = bool(result.get('has_2fa'))
+            result.setdefault('requires_2fa', requires_2fa)
+            result.setdefault('session_key', resolved_session_key)
+
+        return result
+
+    async def verify_code_and_login(self, session_key: str, phone_number: str,
                                    phone_code_hash: str, code: str) -> Dict[str, Any]:
         """
         Verify OTP code and login to account with security bypass.

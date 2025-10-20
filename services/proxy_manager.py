@@ -555,3 +555,4 @@ class ProxyManager:
 
 # Global proxy manager instance
 proxy_manager = ProxyManager()
+

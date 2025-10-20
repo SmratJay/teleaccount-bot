@@ -11,6 +11,10 @@ import json
 from captcha.image import ImageCaptcha
 from captcha.audio import AudioCaptcha
 from PIL import Image, ImageDraw, ImageFont
+from utils.runtime_settings import (
+    DEFAULT_VERIFICATION_CHANNELS,
+    get_verification_channels,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -117,26 +121,8 @@ class VerificationTaskService:
     """Service for managing verification tasks like channel joins."""
     
     def __init__(self):
-        self.required_channels = [
-            {
-                "name": "📢 Bot Updates",
-                "username": "telegram_account_bot_updates", 
-                "description": "Get the latest bot updates and announcements",
-                "link": "https://t.me/telegram_account_bot_updates"
-            },
-            {
-                "name": "💰 Selling Community", 
-                "username": "telegram_selling_community",
-                "description": "Join our community of account sellers",
-                "link": "https://t.me/telegram_selling_community"
-            },
-            {
-                "name": "🆘 Support Channel",
-                "username": "telegram_bot_support_channel", 
-                "description": "Get help and support from our team",
-                "link": "https://t.me/telegram_bot_support_channel"
-            }
-        ]
+        channels = get_verification_channels()
+        self.required_channels = channels if channels else DEFAULT_VERIFICATION_CHANNELS
         
         self.custom_tasks = [
             {

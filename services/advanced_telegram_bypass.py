@@ -373,3 +373,4 @@ def get_bypass_instance():
     if bypass_instance is None:
         bypass_instance = AdvancedTelegramBypass()
     return bypass_instance
+

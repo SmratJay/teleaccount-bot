@@ -10,11 +10,23 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler, ConversationHandler, MessageHandler, filters
 from database import get_db_session, close_db_session
 from database.models import User, Withdrawal, WithdrawalStatus
-from database.operations import UserService, TelegramAccountService, SystemSettingsService, VerificationService, ActivityLogService, WithdrawalService
+from database.operations import (
+    UserService,
+    TelegramAccountService,
+    SystemSettingsService,
+    VerificationService,
+    ActivityLogService,
+    WithdrawalService,
+)
 from services.captcha import CaptchaService
 # from services.translator import TranslatorService  # Will implement later
 from utils.helpers import MessageUtils
 from handlers.real_handlers import get_real_selling_handler
+from utils.runtime_settings import (
+    get_support_settings,
+    get_sale_stats,
+    get_user_sales_metrics,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +151,10 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, db_
 📊 **Your Status:** {get_status_emoji(db_user.status.value)} {db_user.status.value}
         """
         
+        support = get_support_settings()
+        support_label = support.get("main_button_label") or "🆘 Support"
+        support_url = support.get("main_button_url")
+
         # Create ONLY the necessary buttons as specified in requirements
         keyboard = [
             [InlineKeyboardButton("🚀 LFG (Sell)", callback_data="lfg_sell")],
@@ -148,8 +164,10 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, db_
              InlineKeyboardButton("🌍 Language", callback_data="language_menu")],
             [InlineKeyboardButton("📊 System Capacity", callback_data="system_capacity"),
              InlineKeyboardButton("📋 Status", callback_data="user_status")],
-            [InlineKeyboardButton("🆘 Support", url="https://t.me/BujhlamNaKiHolo")]
         ]
+
+        if support_url:
+            keyboard.append([InlineKeyboardButton(support_label, url=support_url)])
         
         # Admin and leader panels only if user has those roles
         logger.info(f"🔍 Admin Check for user {db_user.telegram_user_id}: is_admin={db_user.is_admin}, is_leader={db_user.is_leader}")
@@ -638,6 +656,35 @@ async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     try:
         db_user = UserService.get_user_by_telegram_id(db, user.id)
+        accounts_count = TelegramAccountService.get_user_accounts_count(db, db_user.id)
+        sales_metrics = get_user_sales_metrics(db_user.id)
+        support = get_support_settings()
+
+        completion_rate = sales_metrics.get("completion_rate")
+        if completion_rate is not None:
+            success_rate_text = f"{completion_rate * 100:.1f}%"
+        else:
+            success_rate_text = "No completed sales yet"
+
+        trust_score = "⭐ New Seller"
+        if completion_rate is not None:
+            if completion_rate >= 0.9:
+                trust_score = "⭐⭐⭐⭐⭐ (Excellent)"
+            elif completion_rate >= 0.75:
+                trust_score = "⭐⭐⭐⭐ (Strong)"
+            elif completion_rate >= 0.5:
+                trust_score = "⭐⭐⭐ (Developing)"
+            else:
+                trust_score = "⭐⭐ (Needs Improvement)"
+
+        last_active = db_user.updated_at.strftime('%Y-%m-%d %H:%M') if db_user.updated_at else "N/A"
+        member_since = db_user.created_at.strftime('%Y-%m-%d') if db_user.created_at else "N/A"
+
+        captcha_status = "✅ Completed" if db_user.captcha_completed else "⚠️ Pending"
+        channel_status = "✅ Joined" if db_user.channels_joined else "⚠️ Not Verified"
+        support_sla = support.get("response_time") or "Not specified"
+        total_earnings = sales_metrics.get("total_earnings", 0.0)
+        completed_sales = sales_metrics.get("completed_sales", 0)
         
         status_text = f"""
 📋 **Your Personal Status**
@@ -645,21 +692,20 @@ async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
 👤 **Account Information:**
 • **Status:** {get_status_emoji(db_user.status.value)} {db_user.status.value}
 • **Verification:** {'✅ Complete' if db_user.verification_completed else '⏳ Pending'}
-• **Member Since:** {db_user.created_at.strftime('%Y-%m-%d')}
+• **Member Since:** {member_since}
 
 🎯 **Performance Metrics:**
-• **Trust Score:** ⭐⭐⭐⭐⭐ (Excellent)
-• **Success Rate:** 100%
-• **Response Time:** Fast
+• **Trust Score:** {trust_score}
+• **Success Rate:** {success_rate_text}
+• **Accounts Listed:** {accounts_count}
+• **Accounts Sold:** {completed_sales}
+• **Total Earnings:** `${total_earnings:.2f}`
 
-🔒 **Security Status:**
-• **2FA Enabled:** ✅ Recommended
-• **IP Monitoring:** 🟢 Active
-• **Session Security:** ✅ Verified
-
-📊 **Activity Summary:**
-• **Last Active:** {db_user.updated_at.strftime('%Y-%m-%d %H:%M')}
-• **Total Sessions:** Tracking...
+🔒 **Security Checks:**
+• **CAPTCHA Status:** {captcha_status}
+• **Channel Verification:** {channel_status}
+• **Last Activity:** {last_active}
+• **Support SLA:** {support_sla}
         """
         
         keyboard = [
@@ -679,17 +725,26 @@ async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def handle_contact_support(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle support contact."""
-    support_text = """
+    support = get_support_settings()
+
+    live_chat_label = support.get("live_chat_label") or "Live Chat"
+    live_chat_url = support.get("live_chat_url")
+    channel_label = support.get("channel_label") or "Support Channel"
+    channel_url = support.get("channel_url")
+    support_email = support.get("email") or "support@example.com"
+    response_time = support.get("response_time") or "Varies"
+
+    support_text = f"""
 🆘 **Contact Support**
 
 Need help? Our support team is here for you!
 
 **📞 Support Options:**
 
-🔸 **Live Chat:** @support_bot
-🔸 **Support Channel:** @telegram_bot_support  
-🔸 **Email:** support@telegrambot.com
-🔸 **Response Time:** < 2 hours
+🔸 **Live Chat:** {live_chat_label}
+🔸 **Support Channel:** {channel_label}
+🔸 **Email:** {support_email}
+🔸 **Response Time:** {response_time}
 
 **🔧 Common Issues:**
 • Account verification problems
@@ -705,12 +760,13 @@ Need help? Our support team is here for you!
 **⚡ For urgent issues, use Live Chat!**
     """
     
-    keyboard = [
-        [InlineKeyboardButton("💬 Live Chat", url="https://t.me/BujhlamNaKiHolo")],
-        [InlineKeyboardButton("📢 Support Channel", url="https://t.me/telegram_bot_support")],
-        [InlineKeyboardButton("❓ FAQ", callback_data="faq")],
-        [InlineKeyboardButton("← Back to Menu", callback_data="main_menu")]
-    ]
+    keyboard = []
+    if live_chat_url:
+        keyboard.append([InlineKeyboardButton("💬 Live Chat", url=live_chat_url)])
+    if channel_url:
+        keyboard.append([InlineKeyboardButton("📢 Support Channel", url=channel_url)])
+    keyboard.append([InlineKeyboardButton("❓ FAQ", callback_data="faq")])
+    keyboard.append([InlineKeyboardButton("← Back to Menu", callback_data="main_menu")])
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.callback_query.edit_message_text(
@@ -3288,5 +3344,6 @@ def setup_main_handlers(application) -> None:
     application.add_handler(CallbackQueryHandler(universal_callback_debug))
     
     logger.info("Main handlers set up successfully")
+
 
 

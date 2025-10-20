@@ -326,3 +326,4 @@ def get_notification_service() -> Optional[NotificationService]:
         NotificationService instance or None if not initialized
     """
     return _notification_service
+

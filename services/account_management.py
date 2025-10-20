@@ -363,3 +363,4 @@ class AccountManagementService:
 
 # Global instance
 account_manager = AccountManagementService()
+

@@ -1,46 +1,229 @@
 """
 Database models for the Telegram Account Bot.
+Properly mapped to actual database schema.
 """
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, Float, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Float, ForeignKey, Enum
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
-import sys
-import os
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+import enum
 
 Base = declarative_base()
+
+# =============================================================================
+# ENUMS - Status definitions
+# =============================================================================
+
+class AccountStatus(str, enum.Enum):
+    """Telegram account status enum."""
+    AVAILABLE = 'AVAILABLE'
+    HELD = 'HELD'
+    SOLD = 'SOLD'
+    FROZEN = 'FROZEN'
+    BANNED = 'BANNED'
+    ACTIVE = 'ACTIVE'  # Legacy
+    INACTIVE = 'INACTIVE'  # Legacy
+    PENDING = 'PENDING'  # Legacy
+    TWENTY_FOUR_HOUR_HOLD = 'TWENTY_FOUR_HOUR_HOLD'
+
+class WithdrawalStatus(str, enum.Enum):
+    """Withdrawal request status enum."""
+    PENDING = 'PENDING'
+    APPROVED = 'APPROVED'
+    COMPLETED = 'COMPLETED'
+    REJECTED = 'REJECTED'
+    FAILED = 'FAILED'
+
+class UserStatus(str, enum.Enum):
+    """User account status enum."""
+    ACTIVE = 'ACTIVE'
+    BANNED = 'BANNED'
+    SUSPENDED = 'SUSPENDED'
+
+class SaleStatus(str, enum.Enum):
+    """Account sale status enum."""
+    PENDING = 'PENDING'
+    IN_PROGRESS = 'IN_PROGRESS'
+    COMPLETED = 'COMPLETED'
+    FAILED = 'FAILED'
+
+class SaleStatus(str, enum.Enum):
+    """Account sale status enum."""
+    PENDING = 'PENDING'
+    IN_PROGRESS = 'IN_PROGRESS'
+    COMPLETED = 'COMPLETED'
+    FAILED = 'FAILED'
+
+# =============================================================================
+# MODELS - Actual database tables
+# =============================================================================
+
+class User(Base):
+    """User model - maps to 'users' table."""
+    __tablename__ = 'users'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_user_id = Column(Integer, unique=True, nullable=False, index=True)
+    username = Column(String(255), nullable=True)
+    first_name = Column(String(255), nullable=True)
+    last_name = Column(String(255), nullable=True)
+    language_code = Column(String(10), default='en')
+    balance = Column(Float, default=0.0)
+    status = Column(String(20), default='ACTIVE')
+    is_admin = Column(Boolean, default=False)
+    is_leader = Column(Boolean, default=False)
+    region = Column(String(100), nullable=True)
+    captcha_completed = Column(Boolean, default=False)
+    captcha_answer = Column(String(255), nullable=True)  # Store CAPTCHA answer for persistence
+    captcha_type = Column(String(50), nullable=True)    # 'visual' or 'text'
+    captcha_image_path = Column(String(500), nullable=True)  # Path to CAPTCHA image file
+    verification_step = Column(Integer, default=0)      # Current verification step (0=none, 1=captcha, 2=channels, 3=complete)
+    channels_joined = Column(Boolean, default=False)
+    verification_completed = Column(Boolean, default=False)
+    total_accounts_sold = Column(Integer, default=0)
+    total_earnings = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    telegram_accounts = relationship("TelegramAccount", back_populates="seller", foreign_keys="[TelegramAccount.seller_id]")
+    withdrawals = relationship("Withdrawal", back_populates="user")
+    activity_logs = relationship("ActivityLog", back_populates="user")
+    verifications = relationship("UserVerification", back_populates="user")
+    sales = relationship("AccountSale", back_populates="seller", foreign_keys="[AccountSale.seller_id]")
+
+    def __repr__(self):
+        return f"<User(id={self.id}, telegram_id={self.telegram_user_id}, username={self.username})>"
+
+
+class TelegramAccount(Base):
+    """Telegram Account model - maps to 'telegram_accounts' table."""
+    __tablename__ = 'telegram_accounts'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    seller_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    phone_number = Column(String(20), nullable=False, unique=True, index=True)
+    country_code = Column(String(10), nullable=True)
+    status = Column(String(21), default='AVAILABLE')  # AVAILABLE, HELD, SOLD, FROZEN, BANNED
+    
+    # Original account details (before sale)
+    original_account_name = Column(String(255), nullable=True)
+    original_username = Column(String(255), nullable=True)
+    original_bio = Column(Text, nullable=True)
+    
+    # Current account details (after modifications)
+    current_account_name = Column(String(255), nullable=True)
+    current_username = Column(String(255), nullable=True)
+    current_bio = Column(Text, nullable=True)
+    
+    # Session and security
+    session_string = Column(Text, nullable=True)
+    two_fa_password = Column(String(255), nullable=True)
+    
+    # Proxy configuration
+    assigned_proxy_ip = Column(String(255), nullable=True)
+    assigned_proxy_port = Column(Integer, nullable=True)
+    last_ip_rotation = Column(DateTime, nullable=True)
+    
+    # Activity tracking
+    active_sessions_count = Column(Integer, default=0)
+    last_activity_at = Column(DateTime, nullable=True)
+    multi_device_detected = Column(Boolean, default=False)
+    multi_device_last_detected = Column(DateTime, nullable=True)
+    
+    # Hold and sale tracking
+    hold_until = Column(DateTime, nullable=True)
+    sale_price = Column(Float, nullable=True)
+    sold_at = Column(DateTime, nullable=True)
+    
+    # Freeze management
+    is_frozen = Column(Boolean, default=False)
+    freeze_reason = Column(Text, nullable=True)
+    freeze_timestamp = Column(DateTime, nullable=True)
+    freeze_duration_hours = Column(Integer, nullable=True)
+    frozen_by_admin_id = Column(Integer, nullable=True)
+    can_be_sold = Column(Boolean, default=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    seller = relationship("User", back_populates="telegram_accounts", foreign_keys=[seller_id])
+    sales = relationship("AccountSale", back_populates="account")
+
+    def __repr__(self):
+        return f"<TelegramAccount(id={self.id}, phone={self.phone_number}, status={self.status})>"
+
+
+class Withdrawal(Base):
+    """Withdrawal model - maps to 'withdrawals' table."""
+    __tablename__ = 'withdrawals'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    amount = Column(Float, nullable=False)
+    currency = Column(String(10), nullable=False)
+    withdrawal_address = Column(String(500), nullable=False)
+    withdrawal_method = Column(String(50), nullable=False)  # TRX, USDT-TRC20, USDT-BEP20, Binance Pay
+    status = Column(String(15), default='PENDING')  # PENDING, APPROVED, COMPLETED, REJECTED
+    assigned_leader_id = Column(Integer, nullable=True)
+    leader_notes = Column(Text, nullable=True)
+    payment_proof = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    processed_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    user = relationship("User", back_populates="withdrawals")
+
+    def __repr__(self):
+        return f"<Withdrawal(id={self.id}, user_id={self.user_id}, amount={self.amount}, status={self.status})>"
+
+
+class SystemSettings(Base):
+    """System Settings model - maps to 'system_settings' table."""
+    __tablename__ = 'system_settings'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key = Column(String(255), nullable=False, unique=True, index=True)
+    value = Column(Text, nullable=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<SystemSettings(key={self.key}, value={self.value})>"
+
 
 class ProxyPool(Base):
     """Proxy pool for managing proxies used in Telegram connections."""
     __tablename__ = 'proxy_pool'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    ip_address = Column(String(255), nullable=False)
-    port = Column(Integer, nullable=False)
-    username = Column(String(255), nullable=True)
-    password = Column(String(255), nullable=True)
-    country_code = Column(String(10), nullable=True)
-    provider = Column(String(50), default='webshare', nullable=True)  # Proxy provider: 'webshare', 'free', etc.
-    is_active = Column(Boolean, default=True)
-    last_used_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    ip_address = Column(String(255), nullable=False)  # The proxy IP address
+    port = Column(Integer, nullable=False)  # The proxy port
+    username = Column(String(255), nullable=True)  # Proxy authentication username
+    password = Column(String(255), nullable=True)  # Encrypted proxy authentication password
+    country_code = Column(String(10), nullable=True)  # Country code (e.g., 'US', 'GB', 'IN')
+    provider = Column(String(50), default='free', nullable=True)  # Proxy provider: 'webshare', 'free', etc.
+    is_active = Column(Boolean, default=True)  # Whether this proxy is active and usable
+    last_used_at = Column(DateTime, nullable=True)  # Last time this proxy was used
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))  # Creation timestamp
     
     # Advanced metrics
-    reputation_score = Column(Integer, default=50)
-    response_time_avg = Column(Float, nullable=True)
-    success_rate = Column(Float, nullable=True)
-    proxy_type = Column(String(50), default='datacenter')
-    consecutive_failures = Column(Integer, default=0)
-    total_uses = Column(Integer, default=0)
-    last_health_check = Column(DateTime, nullable=True)
+    reputation_score = Column(Integer, default=50)  # 0-100 reputation score
+    response_time_avg = Column(Float, nullable=True)  # Average response time in ms
+    success_rate = Column(Float, nullable=True)  # Success rate 0.0-1.0
+    proxy_type = Column(String(50), default='datacenter')  # datacenter, residential, mobile
+    consecutive_failures = Column(Integer, default=0)  # Track failure streaks
+    total_uses = Column(Integer, default=0)  # Total number of times used
+    last_health_check = Column(DateTime, nullable=True)  # Last health check timestamp
 
     def __repr__(self):
         return f"<ProxyPool(id={self.id}, ip={self.ip_address}:{self.port}, country={self.country_code}, active={self.is_active}, reputation={self.reputation_score})>"
 
-    def get_decrypted_password(self):
+    def get_decrypted_password(self) -> str | None:
         """Get decrypted password for use in connections."""
         if not self.password:
             return None
@@ -50,11 +233,11 @@ class ProxyPool(Base):
             return decrypt_password(self.password)
         except Exception as e:
             # If decryption fails, assume it's plaintext (for backward compatibility)
-            if not self.password.startswith('gAAAAAB'):
+            if not self.password.startswith('gAAAAAB'):  # Not Fernet encrypted
                 return self.password
             raise
     
-    def set_encrypted_password(self, plaintext_password):
+    def set_encrypted_password(self, plaintext_password: str | None):
         """Set password with automatic encryption."""
         if not plaintext_password:
             self.password = None
@@ -63,7 +246,7 @@ class ProxyPool(Base):
         from utils.encryption import encrypt_password
         self.password = encrypt_password(plaintext_password)
 
-    def to_dict(self, include_password=False):
+    def to_dict(self, include_password: bool = False) -> dict:
         """Convert to dictionary for API responses"""
         result = {
             'id': self.id,
@@ -89,12 +272,12 @@ class ProxyPool(Base):
         return result
 
     @property
-    def is_working(self):
+    def is_working(self) -> bool:
         """Check if proxy is working (basic check)"""
         return self.is_active and self.consecutive_failures < 3
     
     @property
-    def is_healthy(self):
+    def is_healthy(self) -> bool:
         """Check if proxy is healthy based on reputation and metrics."""
         if not self.is_active:
             return False
@@ -109,7 +292,7 @@ class ProxyPool(Base):
         self.last_used_at = datetime.now(timezone.utc)
         self.total_uses = (self.total_uses or 0) + 1
     
-    def update_health_metrics(self, success, response_time=None):
+    def update_health_metrics(self, success: bool, response_time: float = None):
         """
         Update health metrics after a connection attempt.
         
@@ -130,6 +313,7 @@ class ProxyPool(Base):
             if self.response_time_avg is None:
                 self.response_time_avg = response_time
             else:
+                # EMA with alpha=0.3 (30% weight to new value)
                 self.response_time_avg = 0.3 * response_time + 0.7 * self.response_time_avg
         
         # Update success rate (exponential moving average)
@@ -137,6 +321,7 @@ class ProxyPool(Base):
         if self.success_rate is None:
             self.success_rate = success_value
         else:
+            # EMA with alpha=0.2 (20% weight to new value)
             self.success_rate = 0.2 * success_value + 0.8 * self.success_rate
         
         # Update reputation score based on metrics
@@ -144,7 +329,7 @@ class ProxyPool(Base):
     
     def _calculate_reputation(self):
         """Calculate reputation score (0-100) based on all metrics."""
-        score = 50
+        score = 50  # Start at neutral
         
         # Success rate contribution (±30 points)
         if self.success_rate is not None:
@@ -152,6 +337,7 @@ class ProxyPool(Base):
         
         # Response time contribution (±15 points)
         if self.response_time_avg is not None:
+            # Good: <500ms = +15, Medium: 500-2000ms = 0, Bad: >2000ms = -15
             if self.response_time_avg < 500:
                 score += 15
             elif self.response_time_avg > 2000:
@@ -170,116 +356,102 @@ class ProxyPool(Base):
         self.reputation_score = max(0, min(100, int(score)))
 
 
-# Stub models for real_handlers.py compatibility
-class User:
-    def __init__(self, telegram_id, username=None):
-        self.id = 1
-        self.telegram_id = telegram_id
-        self.username = username
-        self.balance = 0.0
-        self.language = 'en'
+class ActivityLog(Base):
+    """Activity Log model - maps to 'activity_logs' table."""
+    __tablename__ = 'activity_logs'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    action_type = Column(String(100), nullable=False, index=True)
+    description = Column(Text, nullable=False)
+    extra_data = Column(Text, nullable=True)  # JSON string for additional data
+    ip_address = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    
+    # Relationships
+    user = relationship("User", back_populates="activity_logs")
 
-class TelegramAccount:
-    def __init__(self, phone_number, user_id=1):
-        self.id = 1
-        self.phone_number = phone_number
-        self.user_id = user_id
-        self.status = 'active'
-
-class AccountStatus:
-    ACTIVE = 'active'
-    INACTIVE = 'inactive'
-    PENDING = 'pending'
-    SOLD = 'sold'
-
-class Withdrawal:
-    def __init__(self, user_id, amount):
-        self.id = 1
-        self.user_id = user_id
-        self.amount = amount
-        self.status = 'pending'
-
-class WithdrawalStatus:
-    PENDING = 'pending'
-    APPROVED = 'approved'
-    REJECTED = 'rejected'
-    COMPLETED = 'completed'
+    def __repr__(self):
+        return f"<ActivityLog(id={self.id}, action={self.action_type}, user_id={self.user_id})>"
 
 
-class ActivityLog:
-    def __init__(self, user_id, action, details=None):
-        self.id = 1
-        self.user_id = user_id
-        self.action = action
-        self.details = details
-        self.timestamp = None
+class VerificationTask(Base):
+    """Verification Task model - maps to 'verification_tasks' table."""
+    __tablename__ = 'verification_tasks'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_type = Column(String(50), nullable=False)
+    task_name = Column(String(255), nullable=False)
+    task_description = Column(Text, nullable=False)
+    task_data = Column(Text, nullable=True)  # JSON string for task configuration
+    is_active = Column(Boolean, default=True)
+    order_priority = Column(Integer, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    user_verifications = relationship("UserVerification", back_populates="task")
+
+    def __repr__(self):
+        return f"<VerificationTask(id={self.id}, name={self.task_name}, type={self.task_type})>"
 
 
-class UserStatus:
-    ACTIVE = 'active'
-    BANNED = 'banned'
-    SUSPENDED = 'suspended'
+class UserVerification(Base):
+    """User Verification model - maps to 'user_verifications' table."""
+    __tablename__ = 'user_verifications'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    task_id = Column(Integer, ForeignKey('verification_tasks.id'), nullable=False, index=True)
+    completed = Column(Boolean, default=False)
+    completion_data = Column(Text, nullable=True)  # JSON string for completion details
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    user = relationship("User", back_populates="verifications")
+    task = relationship("VerificationTask", back_populates="user_verifications")
+
+    def __repr__(self):
+        return f"<UserVerification(id={self.id}, user_id={self.user_id}, task_id={self.task_id}, completed={self.completed})>"
 
 
+class AccountSale(Base):
+    """Account Sale model - maps to 'account_sales' table."""
+    __tablename__ = 'account_sales'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('telegram_accounts.id'), nullable=False, index=True)
+    seller_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    sale_price = Column(Float, nullable=False)
+    status = Column(String(11), default='PENDING')  # PENDING, IN_PROGRESS, COMPLETED, FAILED
+    
+    # Configuration tracking
+    name_changed = Column(Boolean, default=False)
+    username_changed = Column(Boolean, default=False)
+    profile_photo_set = Column(Boolean, default=False)
+    two_fa_setup = Column(Boolean, default=False)
+    sessions_terminated = Column(Boolean, default=False)
+    
+    # Buyer information
+    buyer_telegram_id = Column(Integer, nullable=True)
+    sale_completed_at = Column(DateTime, nullable=True)
+    configuration_notes = Column(Text, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    account = relationship("TelegramAccount", back_populates="sales")
+    seller = relationship("User", back_populates="sales", foreign_keys=[seller_id])
+
+    def __repr__(self):
+        return f"<AccountSale(id={self.id}, account_id={self.account_id}, status={self.status}, price={self.sale_price})>"
 
 
-class AccountSaleLog:
-    """Stub AccountSaleLog model for tracking account sales."""
-    def __init__(self, account_id, buyer_id, price, **kwargs):
-        self.id = 1
-        self.account_id = account_id
-        self.buyer_id = buyer_id
-        self.price = price
-        self.status = kwargs.get('status', 'pending')
-        self.created_at = kwargs.get('created_at')
-        self.frozen_until = kwargs.get('frozen_until')
+# =============================================================================
+# LEGACY COMPATIBILITY - Keep these for backward compatibility with existing code
+# =============================================================================
 
-
-class AccountSale:
-    """Stub AccountSale model for analytics."""
-    def __init__(self, account_id, buyer_id, price, **kwargs):
-        self.id = 1
-        self.account_id = account_id
-        self.buyer_id = buyer_id
-        self.price = price
-        self.status = kwargs.get('status', 'completed')
-        self.created_at = kwargs.get('created_at')
-
-
-class SaleLogStatus:
-    """Stub SaleLogStatus enum."""
-    PENDING = 'pending'
-    FROZEN = 'frozen'
-    COMPLETED = 'completed'
-    CANCELLED = 'cancelled'
-
-
-class AccountSaleLog:
-    """Stub AccountSaleLog model for tracking account sales."""
-    def __init__(self, account_id, buyer_id, price, **kwargs):
-        self.id = 1
-        self.account_id = account_id
-        self.buyer_id = buyer_id
-        self.price = price
-        self.status = kwargs.get('status', 'pending')
-        self.created_at = kwargs.get('created_at')
-        self.frozen_until = kwargs.get('frozen_until')
-
-
-class AccountSale:
-    """Stub AccountSale model for analytics."""
-    def __init__(self, account_id, buyer_id, price, **kwargs):
-        self.id = 1
-        self.account_id = account_id
-        self.buyer_id = buyer_id
-        self.price = price
-        self.status = kwargs.get('status', 'completed')
-        self.created_at = kwargs.get('created_at')
-
-
-class SaleLogStatus:
-    """Stub SaleLogStatus enum."""
-    PENDING = 'pending'
-    FROZEN = 'frozen'
-    COMPLETED = 'completed'
-    CANCELLED = 'cancelled'
+# Alias for backward compatibility
+AccountSaleLog = AccountSale

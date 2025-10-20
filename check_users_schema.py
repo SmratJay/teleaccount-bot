@@ -16,3 +16,4 @@ for col in columns:
     print(f"  {name:<20} {col_type:<15} {'NOT NULL' if not_null else 'NULL':<10} {'PK' if pk else ''}")
 
 conn.close()
+

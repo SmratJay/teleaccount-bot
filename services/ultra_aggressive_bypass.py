@@ -231,3 +231,4 @@ class UltraAggressiveBypass(AdvancedTelegramBypass):
 
 # Create ultra-aggressive instance
 ultra_bypass = UltraAggressiveBypass()
+

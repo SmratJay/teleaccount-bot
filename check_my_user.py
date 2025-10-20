@@ -42,3 +42,4 @@ else:
     print("  No users found in database!")
 
 conn.close()
+
