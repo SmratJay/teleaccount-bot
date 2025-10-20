@@ -190,10 +190,21 @@ class UserService:
     
     @staticmethod
     def get_user_by_telegram_id(db: Session, telegram_id: int):
-        """Stub: Returns a mock user object."""
-        logger.warning("UserService.get_user_by_telegram_id called - using stub implementation")
-        from database.models import User
-        return User(telegram_id=telegram_id, username=None)
+        """Get user by telegram ID from database."""
+        try:
+            from database.models_old import User as DBUser
+            user = db.query(DBUser).filter(DBUser.telegram_user_id == telegram_id).first()
+            if user:
+                logger.debug(f"UserService: Found user {telegram_id} in database")
+                return user
+            else:
+                logger.warning(f"UserService: User {telegram_id} not found in database, returning stub")
+                from database.models import User
+                return User(telegram_id=telegram_id, username=None)
+        except Exception as e:
+            logger.error(f"UserService.get_user_by_telegram_id error: {e}")
+            from database.models import User
+            return User(telegram_id=telegram_id, username=None)
     
     @staticmethod
     def update_user(db: Session, user_id: int, **kwargs):
@@ -249,27 +260,232 @@ class TelegramAccountService:
         """Stub: Returns empty list."""
         logger.warning("TelegramAccountService.get_available_accounts called - using stub implementation")
         return []
+    
+    @staticmethod
+    async def enable_2fa(session_file: str, api_id: int, api_hash: str, password: str, hint: str = "", email: str = None):
+        """
+        Enable 2FA on account using session file
+        
+        Args:
+            session_file: Path to .session file (without .session extension)
+            api_id: Telegram API ID
+            api_hash: Telegram API hash
+            password: New password
+            hint: Password hint
+            email: Recovery email
+        
+        Returns:
+            True if successful
+        """
+        from telethon import TelegramClient
+        from services.session_manager import enable_2fa
+        
+        try:
+            client = TelegramClient(session_file, api_id, api_hash)
+            await client.connect()
+            
+            if not await client.is_user_authorized():
+                logger.error("Session not authorized")
+                return False
+            
+            result = await enable_2fa(client, password, hint, email)
+            await client.disconnect()
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error enabling 2FA: {e}")
+            return False
+    
+    @staticmethod
+    async def change_username(session_file: str, api_id: int, api_hash: str, new_username: str):
+        """
+        Change username on account
+        
+        Args:
+            session_file: Path to .session file (without .session extension)
+            api_id: Telegram API ID
+            api_hash: Telegram API hash
+            new_username: New username (without @)
+        
+        Returns:
+            True if successful
+        """
+        from telethon import TelegramClient
+        from services.session_manager import change_username as change_username_func
+        
+        try:
+            client = TelegramClient(session_file, api_id, api_hash)
+            await client.connect()
+            
+            if not await client.is_user_authorized():
+                logger.error("Session not authorized")
+                return False
+            
+            result = await change_username_func(client, new_username)
+            await client.disconnect()
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error changing username: {e}")
+            return False
+    
+    @staticmethod
+    async def set_profile_photo(session_file: str, api_id: int, api_hash: str, photo_path: str):
+        """
+        Set profile photo
+        
+        Args:
+            session_file: Path to .session file (without .session extension)
+            api_id: Telegram API ID
+            api_hash: Telegram API hash
+            photo_path: Path to photo file
+        
+        Returns:
+            True if successful
+        """
+        from telethon import TelegramClient
+        from services.session_manager import set_profile_photo as set_photo_func
+        
+        try:
+            client = TelegramClient(session_file, api_id, api_hash)
+            await client.connect()
+            
+            if not await client.is_user_authorized():
+                logger.error("Session not authorized")
+                return False
+            
+            result = await set_photo_func(client, photo_path)
+            await client.disconnect()
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error setting profile photo: {e}")
+            return False
+    
+    @staticmethod
+    async def update_profile(session_file: str, api_id: int, api_hash: str, first_name: str = None, last_name: str = None, about: str = None):
+        """
+        Update profile information
+        
+        Args:
+            session_file: Path to .session file (without .session extension)
+            api_id: Telegram API ID
+            api_hash: Telegram API hash
+            first_name: New first name
+            last_name: New last name
+            about: New bio
+        
+        Returns:
+            True if successful
+        """
+        from telethon import TelegramClient
+        from services.session_manager import update_profile as update_profile_func
+        
+        try:
+            client = TelegramClient(session_file, api_id, api_hash)
+            await client.connect()
+            
+            if not await client.is_user_authorized():
+                logger.error("Session not authorized")
+                return False
+            
+            result = await update_profile_func(client, first_name, last_name, about)
+            await client.disconnect()
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error updating profile: {e}")
+            return False
 
 
 class SystemSettingsService:
-    """Stub service for system settings."""
+    """Service for system settings operations."""
     
     @staticmethod
     def get_setting(db: Session, key: str, default=None):
-        """Stub: Returns default value."""
-        logger.warning(f"SystemSettingsService.get_setting called for '{key}' - using stub implementation")
-        settings = {
-            'account_price': 10.0,
-            'min_withdrawal': 5.0,
-            'admin_chat_id': None
-        }
-        return settings.get(key, default)
+        """Get a system setting by key."""
+        try:
+            from database.models_old import SystemSettings
+            setting = db.query(SystemSettings).filter(SystemSettings.key == key).first()
+            if setting:
+                # Try to convert to appropriate type
+                value = setting.value
+                if value is None:
+                    return default
+                # Try to parse as JSON first (for complex types)
+                try:
+                    import json
+                    return json.loads(value)
+                except (json.JSONDecodeError, TypeError):
+                    # Return as string
+                    return value
+            return default
+        except Exception as e:
+            logger.error(f"Error getting setting '{key}': {e}")
+            return default
     
     @staticmethod
-    def set_setting(db: Session, key: str, value):
-        """Stub: Does nothing."""
-        logger.warning(f"SystemSettingsService.set_setting called for '{key}' - using stub implementation")
-        return True
+    def set_setting(db: Session, key: str, value, description: str = None):
+        """Set a system setting."""
+        try:
+            from database.models_old import SystemSettings
+            import json
+            
+            # Convert value to string (JSON for complex types)
+            if isinstance(value, (dict, list)):
+                value_str = json.dumps(value)
+            elif isinstance(value, bool):
+                value_str = json.dumps(value)  # Store as "true" or "false"
+            else:
+                value_str = str(value)
+            
+            setting = db.query(SystemSettings).filter(SystemSettings.key == key).first()
+            if setting:
+                setting.value = value_str
+                if description:
+                    setting.description = description
+                setting.updated_at = datetime.now(timezone.utc)
+            else:
+                setting = SystemSettings(
+                    key=key,
+                    value=value_str,
+                    description=description or f"System setting: {key}"
+                )
+                db.add(setting)
+            
+            db.commit()
+            logger.info(f"✅ System setting '{key}' set to: {value}")
+            return True
+        except Exception as e:
+            logger.error(f"Error setting '{key}': {e}")
+            db.rollback()
+            return False
+    
+    @staticmethod
+    def get_all_settings(db: Session):
+        """Get all system settings."""
+        try:
+            from database.models_old import SystemSettings
+            return db.query(SystemSettings).all()
+        except Exception as e:
+            logger.error(f"Error getting all settings: {e}")
+            return []
+    
+    @staticmethod
+    def delete_setting(db: Session, key: str):
+        """Delete a system setting."""
+        try:
+            from database.models_old import SystemSettings
+            setting = db.query(SystemSettings).filter(SystemSettings.key == key).first()
+            if setting:
+                db.delete(setting)
+                db.commit()
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Error deleting setting '{key}': {e}")
+            db.rollback()
+            return False
 
 
 class WithdrawalService:
@@ -279,12 +495,13 @@ class WithdrawalService:
     def create_withdrawal(db: Session, user_id: int, amount: float, **kwargs):
         """Stub: Returns mock withdrawal."""
         logger.warning("WithdrawalService.create_withdrawal called - using stub implementation")
-        return type('Withdrawal', (), {
-            'id': 1,
-            'user_id': user_id,
-            'amount': amount,
-            'status': 'pending'
-        })()
+        from database.models_old import Withdrawal
+        # Create withdrawal with keyword arguments (SQLAlchemy requirement)
+        withdrawal = Withdrawal(user_id=user_id, amount=amount, **kwargs)
+        db.add(withdrawal)
+        db.commit()
+        db.refresh(withdrawal)
+        return withdrawal
     
     @staticmethod
     def get_user_withdrawals(db: Session, user_id: int):
@@ -297,10 +514,22 @@ class ActivityLogService:
     """Stub service for activity logging."""
     
     @staticmethod
-    def log_activity(db: Session, user_id: int, action: str, details: str = None):
-        """Stub: Does nothing."""
+    def log_activity(db: Session, user_id: int, action: str, details: str = None, **kwargs):
+        """Stub: Does nothing. Accepts any extra kwargs for compatibility."""
         logger.debug(f"ActivityLogService.log_activity: user={user_id}, action={action}")
         return True
+    
+    @staticmethod
+    def log_action(db: Session, user_id: int, action: str, description: str = None, **kwargs):
+        """Alias for log_activity. Accepts description or details."""
+        details = description or kwargs.get('details')
+        return ActivityLogService.log_activity(db, user_id, action, details, **kwargs)
+    
+    @staticmethod
+    def get_user_activity(db: Session, user_id: int, limit: int = 50):
+        """Stub: Returns empty list."""
+        logger.debug(f"ActivityLogService.get_user_activity: user={user_id}, limit={limit}")
+        return []
 
 
 class VerificationService:

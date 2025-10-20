@@ -2102,7 +2102,7 @@ async def handle_withdrawal_history(update: Update, context: ContextTypes.DEFAUL
                 }.get(withdrawal.status.value, '⏳')
                 
                 text += (
-                    f"{status_emoji} *${withdrawal.amount:.2f}* - {withdrawal.withdrawal_method}\n"
+                    f"{status_emoji} *${withdrawal.amount:.2f}* - {withdrawal.currency}\n"
                     f"📅 {withdrawal.created_at.strftime('%Y-%m-%d %H:%M')}\n"
                     f"📊 Status: {withdrawal.status.value.title()}\n"
                 )
@@ -2273,7 +2273,7 @@ async def handle_approve_withdrawal(update: Update, context: ContextTypes.DEFAUL
             f"👤 User: {withdrawal_user.first_name or 'Unknown'} (@{withdrawal_user.username or 'no_username'})\n"
             f"🆔 User ID: `{withdrawal_user.telegram_user_id}`\n"
             f"💰 Amount: *${withdrawal.amount:.2f}*\n"
-            f"💳 Method: *{withdrawal.withdrawal_method}*\n"
+            f"💳 Method: *{withdrawal.currency}*\n"
             f"📍 Address: `{withdrawal.withdrawal_address}`\n"
             f"👑 Approved by: {db_user.first_name or 'Unknown'} (@{db_user.username or 'no_username'})\n"
             f"🕒 Approved: {withdrawal.processed_at.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
@@ -2299,7 +2299,7 @@ async def handle_approve_withdrawal(update: Update, context: ContextTypes.DEFAUL
                 text=(
                     "✅ *Withdrawal Approved!*\n\n"
                     f"💰 Amount: *${withdrawal.amount:.2f}*\n"
-                    f"💳 Method: *{withdrawal.withdrawal_method}*\n"
+                    f"💳 Method: *{withdrawal.currency}*\n"
                     f"📍 Address: `{withdrawal.withdrawal_address}`\n\n"
                     "🕒 Your withdrawal has been approved and will be processed within 24 hours.\n"
                     "📧 You will receive a confirmation once the payment is sent."
@@ -2377,7 +2377,7 @@ async def handle_reject_withdrawal(update: Update, context: ContextTypes.DEFAULT
             f"👤 User: {withdrawal_user.first_name or 'Unknown'} (@{withdrawal_user.username or 'no_username'})\n"
             f"🆔 User ID: `{withdrawal_user.telegram_user_id}`\n"
             f"💰 Amount: *${withdrawal.amount:.2f}*\n"
-            f"💳 Method: *{withdrawal.withdrawal_method}*\n"
+            f"💳 Method: *{withdrawal.currency}*\n"
             f"📍 Address: `{withdrawal.withdrawal_address}`\n"
             f"👑 Rejected by: {db_user.first_name or 'Unknown'} (@{db_user.username or 'no_username'})\n"
             f"🕒 Rejected: {withdrawal.processed_at.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
@@ -2402,7 +2402,7 @@ async def handle_reject_withdrawal(update: Update, context: ContextTypes.DEFAULT
                 text=(
                     "❌ *Withdrawal Rejected*\n\n"
                     f"💰 Amount: *${withdrawal.amount:.2f}*\n"
-                    f"💳 Method: *{withdrawal.withdrawal_method}*\n"
+                    f"💳 Method: *{withdrawal.currency}*\n"
                     f"📍 Address: `{withdrawal.withdrawal_address}`\n\n"
                     "⚠️ Your withdrawal request has been rejected.\n"
                     "💬 Please contact support if you need more information.\n\n"
@@ -2542,7 +2542,7 @@ async def handle_mark_paid(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             f"👤 User: {withdrawal_user.first_name or 'Unknown'} (@{withdrawal_user.username or 'no_username'})\n"
             f"🆔 User ID: `{withdrawal_user.telegram_user_id}`\n"
             f"💰 Amount: *${withdrawal.amount:.2f}*\n"
-            f"💳 Method: *{withdrawal.withdrawal_method}*\n"
+            f"💳 Method: *{withdrawal.currency}*\n"
             f"📍 Address: `{withdrawal.withdrawal_address}`\n"
             f"👑 Processed by: {db_user.first_name or 'Unknown'} (@{db_user.username or 'no_username'})\n"
             f"🕒 Completed: {withdrawal.processed_at.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
@@ -2567,7 +2567,7 @@ async def handle_mark_paid(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 text=(
                     "💚 *Payment Sent!*\n\n"
                     f"💰 Amount: *${withdrawal.amount:.2f}*\n"
-                    f"💳 Method: *{withdrawal.withdrawal_method}*\n"
+                    f"💳 Method: *{withdrawal.currency}*\n"
                     f"📍 Address: `{withdrawal.withdrawal_address}`\n\n"
                     "✅ Your withdrawal has been processed and payment has been sent!\n"
                     "🕒 Please check your wallet/account for the funds.\n\n"
@@ -2871,14 +2871,14 @@ async def handle_withdrawal_confirmation(update: Update, context: ContextTypes.D
             
             logger.info(f"Creating withdrawal for user {db_user.id}")
             
-            # Create withdrawal request
+            # Create withdrawal request - use actual database column names
             withdrawal = WithdrawalService.create_withdrawal(
                 db=db,
                 user_id=withdrawal_details['user_id'],
                 amount=withdrawal_details['amount'],
-                currency=withdrawal_details['currency'],  # Don't use .get() - should be already set
-                withdrawal_address=withdrawal_details['address_or_email'],
-                withdrawal_method=withdrawal_details['method']
+                currency=withdrawal_details['currency'],
+                withdrawal_address=withdrawal_details['address_or_email'],  # Actual DB column name
+                withdrawal_method=withdrawal_details['method']  # Actual DB column name
             )
             
             logger.info(f"Withdrawal created successfully with ID: {withdrawal.id}")
@@ -2922,7 +2922,7 @@ async def handle_withdrawal_confirmation(update: Update, context: ContextTypes.D
                         db=db,
                         user_id=db_user.id,
                         action_type="WITHDRAWAL_REQUESTED",
-                        description=f"User requested ${withdrawal.amount:.2f} withdrawal via {withdrawal.withdrawal_method}"
+                        description=f"User requested ${withdrawal.amount:.2f} withdrawal via {withdrawal.currency}"
                     )
                     logger.info("Activity logged successfully")
                 except Exception as log_error:
@@ -2965,7 +2965,7 @@ async def send_withdrawal_to_leaders(bot, withdrawal, user):
             f"👤 User: {user.first_name or 'Unknown'} (@{user.username or 'no_username'})\n"
             f"🆔 User ID: `{user.telegram_user_id}`\n"
             f"💰 Amount: *${withdrawal.amount:.2f}*\n"
-            f"💳 Method: *{withdrawal.withdrawal_method}*\n"
+            f"💳 Method: *{withdrawal.currency}*\n"
             f"📍 Address: `{withdrawal.withdrawal_address}`\n"
         )
         
@@ -3288,3 +3288,5 @@ def setup_main_handlers(application) -> None:
     application.add_handler(CallbackQueryHandler(universal_callback_debug))
     
     logger.info("Main handlers set up successfully")
+
+

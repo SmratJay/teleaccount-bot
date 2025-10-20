@@ -21,7 +21,7 @@ find_channel_id.py
 get_channel_id.py
 get_bot_info.py
 diagnose_otp.py
-test_*.py
+# test_*.py  # Commented out to allow tests directory
 session_diagnostic.py
 test_withdrawal_config.py
 

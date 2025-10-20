@@ -64,19 +64,19 @@ class ProxyManager:
         self.operation_rules = {
             OperationType.ACCOUNT_CREATION: {
                 'proxy_types': ['residential', 'datacenter'],
-                'min_reputation': 80,
+                'min_reputation': 45,  # Lowered to work with fresh proxies
                 'strategy': LoadBalancingStrategy.BEST_REPUTATION,
                 'country_match': True
             },
             OperationType.LOGIN: {
                 'proxy_types': ['residential', 'datacenter'],
-                'min_reputation': 70,
+                'min_reputation': 40,  # Lowered to work with fresh proxies
                 'strategy': LoadBalancingStrategy.WEIGHTED_RANDOM,
                 'country_match': True
             },
             OperationType.OTP_RETRIEVAL: {
                 'proxy_types': ['residential', 'datacenter'],
-                'min_reputation': 70,
+                'min_reputation': 40,  # Lowered to work with fresh proxies
                 'strategy': LoadBalancingStrategy.WEIGHTED_RANDOM,
                 'country_match': False
             },
@@ -151,10 +151,24 @@ class ProxyManager:
         try:
             db = get_db_session()
             
-            # Get rules for this operation
-            rules = self.operation_rules.get(operation, self.operation_rules[OperationType.GENERAL])
+            # Handle both string and Enum operation types
+            if isinstance(operation, str):
+                operation_key = operation.upper()
+                # Try to find matching OperationType
+                try:
+                    operation_enum = OperationType[operation_key]
+                    operation_name = operation_enum.value
+                except KeyError:
+                    operation_enum = OperationType.GENERAL
+                    operation_name = operation
+            else:
+                operation_enum = operation
+                operation_name = operation.value
             
-            logger.info(f"Selecting proxy for operation: {operation.value}, rules: {rules}")
+            # Get rules for this operation
+            rules = self.operation_rules.get(operation_enum, self.operation_rules[OperationType.GENERAL])
+            
+            logger.info(f"Selecting proxy for operation: {operation_name}, rules: {rules}")
             
             # Get proxies that match criteria
             min_reputation = rules['min_reputation']
@@ -202,12 +216,12 @@ class ProxyManager:
                 suitable_proxies.append(proxy)
             
             if not suitable_proxies:
-                logger.warning(f"No suitable WebShare proxies found for operation {operation.value}, trying fallback")
+                logger.warning(f"No suitable WebShare proxies found for operation {operation_name}, trying fallback")
                 # Try with relaxed criteria (still WebShare only)
                 suitable_proxies = [p for p in webshare_proxies if p.is_active and p.reputation_score >= 30]
             
             if not suitable_proxies:
-                logger.error(f"No proxies available for operation {operation.value}")
+                logger.error(f"No proxies available for operation {operation_name}")
                 return None
             
             # If country matching is important, separate country matches
@@ -222,7 +236,7 @@ class ProxyManager:
             
             if selected_proxy:
                 logger.info(
-                    f"Selected proxy for {operation.value}: "
+                    f"Selected proxy for {operation_name}: "
                     f"{selected_proxy.ip_address}:{selected_proxy.port} "
                     f"(reputation: {selected_proxy.reputation_score}, "
                     f"type: {getattr(selected_proxy, 'proxy_type', 'datacenter')}, "
@@ -242,7 +256,7 @@ class ProxyManager:
             return None
                 
         except Exception as e:
-            logger.error(f"Error getting proxy for operation {operation.value}: {e}", exc_info=True)
+            logger.error(f"Error getting proxy for operation {operation_name}: {e}", exc_info=True)
             return None
         finally:
             if db:

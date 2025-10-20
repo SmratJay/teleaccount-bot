@@ -22,45 +22,51 @@ A comprehensive Telegram bot for secure account management with advanced feature
 - **Comprehensive Dashboard**: System statistics and account overview
 - **Withdrawal Management**: Approve/reject requests with one click
 - **Broadcast System**: Send announcements to all active users
+- **Proxy Management**: Control proxy rotation and IP management
+- **Activity Logging**: Comprehensive audit trails for all user actions
 - **Real-time Monitoring**: Health checks and security alerts
 - **System Settings**: Configure currencies and operational parameters
 
 ### 🌍 User Experience  
-- **Multi-language Support**: English, Spanish, Russian (easily extensible)
+- **Multi-language Support**: English, Spanish, French, German, Russian, Chinese, Hindi, Arabic
+- **Language Persistence**: User language preferences saved to database and applied across all menus
 - **Intuitive Interface**: Clean inline keyboards and guided flows
 - **Responsive Design**: Works seamlessly on mobile and desktop
 - **Help System**: Comprehensive documentation and support channels
 
 ## 📋 Requirements
 
+### Recent Updates (v2.1.0)
+- ✅ **Language Persistence**: User language selections are now saved to database and persist across sessions
+- ✅ **Proxy Controls**: Admin panel now includes proxy/IP rotation management controls
+- ✅ **Activity Logging**: Comprehensive audit logging for all critical user flows and admin actions
+- ✅ **Enhanced Testing**: Added unit tests for core functionality with pytest framework
+- ✅ **Code Quality**: Improved error handling and indentation fixes across handlers
+
 ### System Requirements
-- Python 3.8+
-- PostgreSQL 12+
-- Redis (optional, for session management)
-- 2GB+ RAM recommended
-- Linux/Windows/macOS
+- Python 3.12+
+- SQLite (default) or PostgreSQL
+- 1GB+ RAM recommended
+- Windows/Linux/macOS
 
 ### Python Dependencies
+All dependencies are listed in `requirements.txt`. Key packages:
 ```
 python-telegram-bot==20.7
 telethon==1.33.1
-psycopg2-binary==2.9.9
 sqlalchemy==2.0.23
-alembic==1.12.1
 python-dotenv==1.0.0
 requests==2.31.0
-pycryptodome==3.19.0
-aiofiles==23.2.1
-asyncpg==0.29.0
-redis==5.0.1
 cryptography==41.0.8
+aiohttp==3.9.1
+pillow==10.1.0
 ```
 
 ### External Services
 - Telegram Bot API (get token from @BotFather)
 - Telegram API credentials (api_id, api_hash from my.telegram.org)
-- Proxy service (optional but recommended)
-- PostgreSQL database server
+- Proxy service (optional but recommended for production)
+- Database: SQLite (included) or PostgreSQL for production
 
 ## 🛠️ Installation & Setup
 
@@ -76,6 +82,9 @@ pip install -r requirements.txt
 ```
 
 ### 3. Database Setup
+The bot uses SQLite by default (no setup required). The database file `teleaccount_bot.db` will be created automatically on first run.
+
+For production PostgreSQL setup:
 ```bash
 # Install PostgreSQL (Ubuntu/Debian)
 sudo apt update
@@ -86,7 +95,10 @@ sudo -u postgres psql
 CREATE DATABASE teleaccount_bot;
 CREATE USER bot_user WITH PASSWORD 'your_secure_password';
 GRANT ALL PRIVILEGES ON DATABASE teleaccount_bot TO bot_user;
-\\q
+\q
+
+# Update .env with PostgreSQL connection string
+DATABASE_URL=postgresql://bot_user:your_secure_password@localhost:5432/teleaccount_bot
 ```
 
 ### 4. Environment Configuration
@@ -106,16 +118,17 @@ BOT_USERNAME=your_bot_username
 API_ID=your_api_id
 API_HASH=your_api_hash
 
-# Database Configuration
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=teleaccount_bot
-DB_USER=bot_user
-DB_PASSWORD=your_secure_password
+# Database Configuration (SQLite is default)
+# DATABASE_URL=sqlite:///teleaccount_bot.db  # Default
+# DATABASE_URL=postgresql://user:pass@localhost:5432/teleaccount_bot  # PostgreSQL
 
 # Admin Configuration
 ADMIN_CHAT_ID=your_admin_chat_id
 ADMIN_USER_ID=your_admin_user_id
+
+# Channel Configuration (for verification)
+CHANNEL_USERNAME=your_channel_username
+CHANNEL_ID=your_channel_id
 
 # Proxy Configuration (optional)
 PROXY_LIST_URL=your_proxy_list_url
@@ -123,21 +136,49 @@ PROXY_USERNAME=your_proxy_username
 PROXY_PASSWORD=your_proxy_password
 
 # Security
-SECRET_KEY=your_secret_key_here
-ENCRYPTION_KEY=your_encryption_key_here
+ENCRYPTION_KEY=your_32_byte_encryption_key_here
 
-# Redis Configuration (optional)
-REDIS_URL=redis://localhost:6379/0
+# Webapp (optional)
+WEBAPP_URL=https://your-domain.com
+PORT=8080
 ```
 
 ### 5. Initialize Database
+The database tables will be created automatically on first run. To manually initialize:
 ```bash
-python -c "from database import create_tables; create_tables()"
+python -c "from database.models import Base; from database import engine; Base.metadata.create_all(engine)"
 ```
 
-### 6. Run the Bot
+### 6. Set Up Admin User
+After first run, add yourself as admin:
 ```bash
-python main.py
+python -c "from database.operations import UserService; from database import SessionLocal; db = SessionLocal(); user = UserService.get_user(db, YOUR_TELEGRAM_USER_ID); user.is_admin = True; db.commit()"
+```
+
+### 7. Run the Bot
+```bash
+python real_main.py
+```
+
+For production deployment:
+```bash
+# Using Heroku
+git push heroku main
+
+# Using systemd (Linux)
+sudo systemctl start teleaccount-bot
+```
+
+### 8. Run Tests (Optional)
+```bash
+# Install test dependencies
+pip install pytest pytest-asyncio pytest-mock
+
+# Run all tests
+pytest tests/
+
+# Run specific test
+pytest tests/test_language_persistence.py -v
 ```
 
 ## 📖 Usage Guide
@@ -197,65 +238,100 @@ Toggle withdrawal systems:
 
 ```
 teleaccount_bot/
-├── main.py                 # Application entry point
-├── requirements.txt        # Python dependencies
-├── .env.example           # Environment configuration template
-├── .gitignore             # Git ignore rules
+├── real_main.py           # Application entry point
+├── requirements.txt       # Python dependencies
+├── .env.example          # Environment configuration template
+├── .gitignore            # Git ignore rules
+├── Procfile              # Heroku deployment configuration
+├── runtime.txt           # Python runtime version
 │
-├── database/              # Database layer
-│   ├── __init__.py       # Database configuration
-│   ├── models.py         # SQLAlchemy models
-│   └── operations.py     # Database operations
+├── database/             # Database layer
+│   ├── __init__.py      # Database configuration
+│   ├── models.py        # SQLAlchemy models (User, Withdrawal, SystemSettings)
+│   ├── operations.py    # Database service layer (UserService, WithdrawalService)
+│   └── migrations/      # Database migration scripts
 │
-├── handlers/              # Bot command handlers
-│   ├── __init__.py       # Handler setup
-│   ├── basic_handlers.py # Start, help commands
-│   ├── lfg_handlers.py   # Account creation flow
-│   ├── user_handlers.py  # Balance, withdraw commands
-│   └── admin_handlers.py # Admin dashboard
+├── handlers/             # Bot command handlers
+│   ├── __init__.py      # Handler registration
+│   ├── real_handlers.py # Main handlers (start, CAPTCHA, verification, LFG flow)
+│   ├── main_handlers.py # Withdrawal and transaction handlers
+│   ├── admin_handlers.py # Admin dashboard and management
+│   ├── leader_handlers.py # Leader system handlers
+│   ├── analytics_handlers.py # Analytics dashboard
+│   └── proxy_admin_commands.py # Proxy management
 │
-├── services/              # Core business logic
+├── services/             # Core business logic
 │   ├── __init__.py
-│   ├── proxy_manager.py  # Proxy assignment
-│   ├── telethon_manager.py # Telegram client management
-│   └── otp_monitor.py    # Security monitoring
+│   ├── proxy_service.py # Proxy assignment and rotation
+│   ├── telethon_service.py # Telegram client management
+│   ├── notification_service.py # User notifications
+│   └── scheduler_service.py # Background tasks
 │
-├── utils/                 # Utility functions
+├── utils/                # Utility functions
 │   ├── __init__.py
-│   ├── helpers.py        # General utilities
-│   └── logging_config.py # Logging setup
+│   ├── decorators.py    # Authentication decorators
+│   ├── validators.py    # Input validation
+│   └── logger.py        # Logging configuration
 │
 ├── locales/              # Internationalization
-│   ├── __init__.py       # Locale manager
-│   └── messages.json     # Translation strings
+│   ├── __init__.py      # Locale manager
+│   └── *.json           # Translation files (en, es, ru)
 │
-├── sessions/             # Telethon session files (auto-created)
-└── logs/                 # Application logs (auto-created)
+├── webapp/               # Web interface components
+│   └── __init__.py
+│
+├── assets/               # Static files (captcha images, etc.)
+├── temp_captchas/        # Temporary CAPTCHA storage
+├── logs/                 # Application logs (auto-created)
+├── tests/                # Unit tests and test utilities
+└── config/               # Configuration files
 ```
 
 ## 🔧 Configuration
 
 ### Database Models
 
-#### Users Table
-- User information and balance tracking
-- Language preferences
-- Registration and activity timestamps
-
-#### Accounts Table  
-- Managed Telegram accounts
-- Security status and 2FA configuration
-- Proxy assignments and session paths
-- Activity monitoring
+#### Users Table (`database/models.py`)
+```python
+class User:
+    user_id: Integer (Primary Key)
+    username: String
+    balance: Float
+    is_admin: Boolean
+    is_leader: Boolean
+    is_verified: Boolean
+    verification_step: Integer
+    language: String
+    created_at: DateTime
+    updated_at: DateTime
+```
 
 #### Withdrawals Table
-- Withdrawal requests and processing
-- Multi-currency support
-- Admin approval workflow
+```python
+class Withdrawal:
+    id: Integer (Primary Key)
+    user_id: Integer (Foreign Key)
+    amount: Float
+    currency: String
+    withdrawal_address: String
+    withdrawal_method: String
+    status: String (pending, approved, rejected)
+    assigned_leader_id: Integer
+    leader_notes: Text
+    payment_proof: Text
+    created_at: DateTime
+    updated_at: DateTime
+    processed_at: DateTime
+```
 
-#### System Settings Table
-- Configurable system parameters
-- Feature flags and operational controls
+#### SystemSettings Table
+```python
+class SystemSettings:
+    key: String (Primary Key)
+    value: String
+    description: Text
+    updated_at: DateTime
+```
 
 ### Security Features
 

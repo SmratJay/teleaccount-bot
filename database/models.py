@@ -23,6 +23,7 @@ class ProxyPool(Base):
     username = Column(String(255), nullable=True)
     password = Column(String(255), nullable=True)
     country_code = Column(String(10), nullable=True)
+    provider = Column(String(50), default='webshare', nullable=True)  # Proxy provider: 'webshare', 'free', etc.
     is_active = Column(Boolean, default=True)
     last_used_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -219,3 +220,66 @@ class UserStatus:
     BANNED = 'banned'
     SUSPENDED = 'suspended'
 
+
+
+
+class AccountSaleLog:
+    """Stub AccountSaleLog model for tracking account sales."""
+    def __init__(self, account_id, buyer_id, price, **kwargs):
+        self.id = 1
+        self.account_id = account_id
+        self.buyer_id = buyer_id
+        self.price = price
+        self.status = kwargs.get('status', 'pending')
+        self.created_at = kwargs.get('created_at')
+        self.frozen_until = kwargs.get('frozen_until')
+
+
+class AccountSale:
+    """Stub AccountSale model for analytics."""
+    def __init__(self, account_id, buyer_id, price, **kwargs):
+        self.id = 1
+        self.account_id = account_id
+        self.buyer_id = buyer_id
+        self.price = price
+        self.status = kwargs.get('status', 'completed')
+        self.created_at = kwargs.get('created_at')
+
+
+class SaleLogStatus:
+    """Stub SaleLogStatus enum."""
+    PENDING = 'pending'
+    FROZEN = 'frozen'
+    COMPLETED = 'completed'
+    CANCELLED = 'cancelled'
+
+
+class AccountSaleLog:
+    """Stub AccountSaleLog model for tracking account sales."""
+    def __init__(self, account_id, buyer_id, price, **kwargs):
+        self.id = 1
+        self.account_id = account_id
+        self.buyer_id = buyer_id
+        self.price = price
+        self.status = kwargs.get('status', 'pending')
+        self.created_at = kwargs.get('created_at')
+        self.frozen_until = kwargs.get('frozen_until')
+
+
+class AccountSale:
+    """Stub AccountSale model for analytics."""
+    def __init__(self, account_id, buyer_id, price, **kwargs):
+        self.id = 1
+        self.account_id = account_id
+        self.buyer_id = buyer_id
+        self.price = price
+        self.status = kwargs.get('status', 'completed')
+        self.created_at = kwargs.get('created_at')
+
+
+class SaleLogStatus:
+    """Stub SaleLogStatus enum."""
+    PENDING = 'pending'
+    FROZEN = 'frozen'
+    COMPLETED = 'completed'
+    CANCELLED = 'cancelled'
