@@ -1,0 +1,55 @@
+ubuntu@ip-172-31-42-97:~/teleaccount-bot$ sudo journalctl -xeu telebot.service -n 50
+Oct 21 20:39:15 ip-172-31-42-97 systemd[1]: Failed to start telebot.service - Telegram Acco>
+░░ Subject: A start job for unit telebot.service has failed
+░░ Defined-By: systemd
+░░ Support: http://www.ubuntu.com/support
+░░
+░░ A start job for unit telebot.service has finished with a failure.
+░░
+░░ The job identifier is 10627 and the job result is failed.
+Oct 21 20:39:25 ip-172-31-42-97 systemd[1]: telebot.service: Scheduled restart job, restart>
+░░ Subject: Automatic restarting of a unit has been scheduled
+░░ Defined-By: systemd
+░░ Support: http://www.ubuntu.com/support
+░░
+░░ Automatic restarting of the unit telebot.service has been scheduled, as the result for
+░░ the configured Restart= setting for the unit.
+Oct 21 20:39:25 ip-172-31-42-97 systemd[1]: telebot.service: Failed to load environment fil>
+Oct 21 20:39:25 ip-172-31-42-97 systemd[1]: telebot.service: Failed to spawn 'start' task: >
+Oct 21 20:39:25 ip-172-31-42-97 systemd[1]: telebot.service: Failed with result 'resources'.
+░░ Subject: Unit failed
+░░ Defined-By: systemd
+░░ Support: http://www.ubuntu.com/support
+░░
+░░ The unit telebot.service has entered the 'failed' state with result 'resources'.
+Oct 21 20:39:25 ip-172-31-42-97 systemd[1]: Failed to start telebot.service - Telegram Acco>
+░░ Subject: A start job for unit telebot.service has failed
+░░ Defined-By: systemd
+░░ Support: http://www.ubuntu.com/support
+░░
+░░ A start job for unit telebot.service has finished with a failure.
+░░
+░░ The job identifier is 10746 and the job result is failed.
+Oct 21 20:39:35 ip-172-31-42-97 systemd[1]: telebot.service: Scheduled restart job, restart>
+░░ Subject: Automatic restarting of a unit has been scheduled
+░░ Defined-By: systemd
+░░ Support: http://www.ubuntu.com/support
+░░
+░░ Automatic restarting of the unit telebot.service has been scheduled, as the result for
+░░ the configured Restart= setting for the unit.
+Oct 21 20:39:35 ip-172-31-42-97 systemd[1]: telebot.service: Failed to load environment fil>
+Oct 21 20:39:35 ip-172-31-42-97 systemd[1]: telebot.service: Failed to spawn 'start' task: >
+Oct 21 20:39:35 ip-172-31-42-97 systemd[1]: telebot.service: Failed with result 'resources'.
+░░ Subject: Unit failed
+░░ Defined-By: systemd
+░░ Support: http://www.ubuntu.com/support
+░░
+░░ The unit telebot.service has entered the 'failed' state with result 'resources'.
+Oct 21 20:39:35 ip-172-31-42-97 systemd[1]: Failed to start telebot.service - Telegram Acco>
+░░ Subject: A start job for unit telebot.service has failed
+░░ Defined-By: systemd
+░░ Support: http://www.ubuntu.com/support
+░░
+░░ A start job for unit telebot.service has finished with a failure.
+░░
+░░ The job identifier is 10865 and the job result is failed.
