@@ -651,13 +651,23 @@ class SystemSettingsService:
     
     @staticmethod
     def get_all_settings(db: Session):
-        """Get all system settings."""
+        """Get all system settings as a dictionary."""
         try:
             from database.models import SystemSettings
-            return db.query(SystemSettings).all()
+            settings_list = db.query(SystemSettings).all()
+            # Convert to dictionary
+            settings_dict = {}
+            for setting in settings_list:
+                # Parse value from JSON if needed
+                try:
+                    import json
+                    settings_dict[setting.key] = json.loads(setting.value)
+                except (json.JSONDecodeError, TypeError):
+                    settings_dict[setting.key] = setting.value
+            return settings_dict
         except Exception as e:
             logger.error(f"Error getting all settings: {e}")
-            return []
+            return {}
     
     @staticmethod
     def delete_setting(db: Session, key: str):

@@ -1,5 +1,3 @@
-sale_log_service = SaleLogService()                seller_username=seller.username,
-sale_log_service = SaleLogService()
 """Sale log operations and service for the admin panel.
 
 This module provides a small, safe implementation of a SaleLogService used

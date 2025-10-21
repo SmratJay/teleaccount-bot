@@ -32,7 +32,7 @@ async def handle_admin_reports(update: Update, context: ContextTypes.DEFAULT_TYP
         
         # User statistics
         total_users = db.query(func.count(User.id)).scalar() or 0
-        verified_users = db.query(func.count(User.id)).filter(User.is_verified == True).scalar() or 0
+        verified_users = db.query(func.count(User.id)).filter(User.verification_completed == True).scalar() or 0
         today_users = db.query(func.count(User.id)).filter(User.created_at >= today_start).scalar() or 0
         
         # Account statistics
