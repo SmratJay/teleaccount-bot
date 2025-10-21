@@ -26,8 +26,8 @@ class CaptchaService:
         self.captcha_dir = "temp_captchas"
         os.makedirs(self.captcha_dir, exist_ok=True)
         
-        # Initialize image captcha generator
-        self.image_captcha = ImageCaptcha(width=280, height=90, fonts=['arial.ttf', 'calibri.ttf'])
+        # Initialize image captcha generator (use default fonts - no custom fonts needed)
+        self.image_captcha = ImageCaptcha(width=280, height=90)
         
         # Removed math_questions and text_questions - only using visual captchas now
     
