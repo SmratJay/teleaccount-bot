@@ -3,6 +3,7 @@
 .env.local
 .env.production
 *.env
+.encryption_key
 
 # Database files - Don't upload to GitHub
 *.db
