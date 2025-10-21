@@ -10,7 +10,7 @@ import os
 import json
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes, ConversationHandler, CallbackQueryHandler, MessageHandler, filters
+from telegram.ext import ContextTypes, ConversationHandler, CallbackQueryHandler, MessageHandler, CommandHandler, filters
 from services.real_telegram import RealTelegramService
 from services.account_configuration import account_config_service
 from services.session_management import session_manager
@@ -739,6 +739,39 @@ async def cancel_sale(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     
     # Clear conversation data
     context.user_data.clear()
+    logger.info(f"🔥 Sale cancelled for user {update.effective_user.id}, context cleared")
+    
+    return ConversationHandler.END
+
+
+async def exit_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Exit conversation and return to main menu."""
+    context.user_data.clear()
+    logger.info(f"🔥 Selling conversation exited for user {update.effective_user.id}, redirecting to main menu")
+    
+    # Answer callback query if present to avoid UI delays
+    if update.callback_query:
+        await update.callback_query.answer()
+    
+    # Import here to avoid circular dependency
+    from handlers.real_handlers import show_real_main_menu
+    await show_real_main_menu(update, context)
+    
+    return ConversationHandler.END
+
+
+async def exit_to_admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Exit conversation and go to admin panel."""
+    context.user_data.clear()
+    logger.info(f"🔥 Selling conversation exited for user {update.effective_user.id}, redirecting to admin panel")
+    
+    # Answer callback query if present
+    if update.callback_query:
+        await update.callback_query.answer()
+    
+    # Import here to avoid circular dependency  
+    from handlers.admin_handlers import handle_admin_panel
+    await handle_admin_panel(update, context)
     
     return ConversationHandler.END
 
@@ -765,7 +798,10 @@ def get_real_selling_handler():
             ]
         },
         fallbacks=[
-            CallbackQueryHandler(cancel_sale, pattern='^cancel_sale$')
+            CallbackQueryHandler(cancel_sale, pattern='^cancel_sale$'),
+            CommandHandler('start', exit_to_main_menu),
+            CallbackQueryHandler(exit_to_main_menu, pattern='^main_menu$'),
+            CallbackQueryHandler(exit_to_admin_panel, pattern='^admin_panel$')
         ],
         per_message=False,
         per_user=True,
