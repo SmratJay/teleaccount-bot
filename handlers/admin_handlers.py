@@ -42,7 +42,7 @@ async def handle_admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE)
 • View comprehensive user information
 
 **📊 System Controls:**
-• Chat history deletion toggle control
+• Account manipulation and configuration
 • Monitor frozen/spam/OTP reports
 • Session management and security
 
@@ -61,7 +61,6 @@ async def handle_admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE)
         [InlineKeyboardButton("❄️ Account Freeze Management", callback_data="admin_freeze_panel")],
         [InlineKeyboardButton("📋 Sale Logs & Approval", callback_data="sale_logs_panel")],
         [InlineKeyboardButton("🔐 Session Management", callback_data="admin_sessions")],
-        [InlineKeyboardButton("🗑️ Chat History Control", callback_data="admin_chat_control")],
         [InlineKeyboardButton("⚠️ Reports & Logs", callback_data="admin_reports")],
         [InlineKeyboardButton("🌐 IP/Proxy Config", callback_data="admin_proxy")],
         [InlineKeyboardButton("📊 Activity Tracker", callback_data="admin_activity")],
