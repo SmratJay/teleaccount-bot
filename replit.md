@@ -10,6 +10,30 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+**October 21, 2025 - Admin Panel Bug Fixes & Enhancements:**
+- **Fixed Reports & Logs System:**
+  - Corrected all field references from `sale_timestamp` to `created_at` in AccountSale queries
+  - Revenue metrics now use correct `created_at` field for time-based filtering
+  - All statistics display real-time data from database with no hardcoded values
+  
+- **Fixed Sale Log Operations:**
+  - Completely migrated from non-existent `AccountSaleLog` model to `AccountSale`
+  - Updated all status references from enum to string values ('PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED')
+  - Fixed approve/reject handlers to use correct database models
+  - Added proper activity logging for all sale status changes
+  
+- **Enhanced Security & Access Control:**
+  - Implemented "View All Admins" button - displays all admin users from database
+  - Implemented "View All Leaders" button - displays all leader users from database
+  - Added "Add Admin" conversation handler with user ID validation and activity logging
+  - Added "Remove Admin" conversation handler with self-removal protection
+  - All security operations now properly log to ActivityLog for audit trails
+  
+- **Fixed Language Persistence:**
+  - Main menu now loads user's language from database on every display
+  - Language preferences persist correctly across sessions
+  - Translation service automatically applies saved language_code from User model
+
 **October 21, 2025 - Reports & Logs + System Settings Implementation:**
 - Removed "Activity Tracker" button from admin panel (redundant with Reports & Logs)
 - Implemented comprehensive **Reports & Logs** system with 5 modules:
@@ -26,7 +50,6 @@ Preferred communication style: Simple, everyday language.
 - All features use real-time database queries with zero hardcoded data
 - Settings stored in `system_settings` table for persistence across sessions
 - Added `is_admin()` and `is_leader()` utility functions to utils/helpers.py
-- All handlers fully wired and tested
 
 **October 21, 2025 - Proxy System Cleanup:**
 - Disabled free proxy sources by default (FREE_PROXY_SOURCES_ENABLED = 'false')
