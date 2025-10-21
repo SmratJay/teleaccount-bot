@@ -174,6 +174,32 @@ class ProxyService:
             logger.error(f"Failed to cleanup old proxies: {e}")
             return 0
 
+    @staticmethod
+    def remove_free_proxies(db: Session) -> int:
+        """
+        Remove all free proxies (non-WebShare proxies) from the database.
+        Only keeps proxies with provider='webshare'.
+        """
+        try:
+            # Find all proxies that are NOT from WebShare
+            free_proxies = db.query(ProxyPool).filter(
+                or_(ProxyPool.provider != 'webshare', ProxyPool.provider == None)
+            ).all()
+
+            removed_count = len(free_proxies)
+            
+            # Delete them
+            for proxy in free_proxies:
+                db.delete(proxy)
+
+            db.commit()
+            logger.info(f"✅ Removed {removed_count} free proxies (kept only WebShare)")
+            return removed_count
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to remove free proxies: {e}")
+            return 0
+
 
 # Database service classes for handlers
 # These are placeholders until full user/account system is implemented
