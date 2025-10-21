@@ -10,10 +10,14 @@
 *.sqlite
 *.sqlite3
 teleaccount_bot.db
+*.db-journal
 
 # Session files - Keep private
 *.session
 *.session-journal
+secure_*.session
+sessions/
+sessions_test/
 
 # Temporary/diagnostic files
 check_leaders.py
@@ -25,6 +29,8 @@ diagnose_otp.py
 # test_*.py  # Commented out to allow tests directory
 session_diagnostic.py
 test_withdrawal_config.py
+temp_captchas/
+*.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
