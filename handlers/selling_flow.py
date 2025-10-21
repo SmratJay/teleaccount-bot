@@ -507,9 +507,10 @@ async def start_real_processing(update, context) -> int:
         bonus_twofa = 5.0 if new_2fa_password else 0.0
         sale_price = round(base_price + change_count * bonus_per_change + bonus_twofa, 2)
 
-        db_user.balance += sale_price
-        db_user.total_accounts_sold += 1
-        db_user.total_earnings += sale_price
+        # Update user balance and stats (handle None values)
+        db_user.balance = (db_user.balance or 0) + sale_price
+        db_user.total_accounts_sold = (db_user.total_accounts_sold or 0) + 1
+        db_user.total_earnings = (db_user.total_earnings or 0) + sale_price
 
         account.status = AccountStatus.SOLD.value
         account.current_account_name = new_settings.get('name')
