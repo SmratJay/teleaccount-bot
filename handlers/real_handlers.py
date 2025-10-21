@@ -56,6 +56,12 @@ async def show_real_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
                 logger.error(f"User {user.id} not found in database during main menu display")
                 message_text = "⚠️ **User not found. Please restart with /start**"
             else:
+                # Load user's language from database and set in context
+                if db_user.language_code:
+                    from services.translation_service import translation_service
+                    translation_service.set_user_language(context, db_user.language_code)
+                    logger.info(f"Loaded language {db_user.language_code} for user {user.id}")
+                
                 username_display = f"@{user.username}" if user.username else f"User {user.id}"
                 balance = db_user.balance if hasattr(db_user, 'balance') else 0.00
                 is_admin = bool(getattr(db_user, 'is_admin', False))

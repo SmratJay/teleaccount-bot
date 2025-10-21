@@ -874,6 +874,12 @@ def setup_admin_handlers(application) -> None:
         handle_clear_old_logs,
         handle_view_db_stats
     )
+    from handlers.system_settings_handlers_additional import (
+        handle_view_all_admins,
+        handle_view_all_leaders,
+        get_add_admin_conversation,
+        get_remove_admin_conversation
+    )
     application.add_handler(CallbackQueryHandler(handle_admin_settings, pattern='^admin_settings$'))
     application.add_handler(CallbackQueryHandler(handle_settings_bot_config, pattern='^settings_bot_config$'))
     application.add_handler(CallbackQueryHandler(handle_settings_financial, pattern='^settings_financial$'))
@@ -884,6 +890,12 @@ def setup_admin_handlers(application) -> None:
     application.add_handler(CallbackQueryHandler(handle_toggle_channel_verification, pattern='^toggle_channel_verification$'))
     application.add_handler(CallbackQueryHandler(handle_clear_old_logs, pattern='^clear_old_logs$'))
     application.add_handler(CallbackQueryHandler(handle_view_db_stats, pattern='^view_db_stats$'))
+    application.add_handler(CallbackQueryHandler(handle_view_all_admins, pattern='^view_all_admins$'))
+    application.add_handler(CallbackQueryHandler(handle_view_all_leaders, pattern='^view_all_leaders$'))
+    
+    # Admin management conversations
+    application.add_handler(get_add_admin_conversation())
+    application.add_handler(get_remove_admin_conversation())
 
     logger.info("Admin handlers set up successfully")# Additional handler functions will be implemented...
 async def handle_field_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

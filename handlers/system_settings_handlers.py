@@ -221,8 +221,8 @@ Admin and Leader access is controlled via environment variables (ADMIN_USER_ID, 
         keyboard = [
             [InlineKeyboardButton("👥 View All Admins", callback_data="view_all_admins")],
             [InlineKeyboardButton("👥 View All Leaders", callback_data="view_all_leaders")],
-            [InlineKeyboardButton("🔒 Set Login Attempts", callback_data="set_login_attempts")],
-            [InlineKeyboardButton("⏱️ Set Session Timeout", callback_data="set_session_timeout")],
+            [InlineKeyboardButton("➕ Add Admin", callback_data="add_admin"),
+             InlineKeyboardButton("➖ Remove Admin", callback_data="remove_admin")],
             [InlineKeyboardButton("🔙 Back", callback_data="admin_settings")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)

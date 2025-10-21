@@ -50,25 +50,25 @@ async def handle_admin_reports(update: Update, context: ContextTypes.DEFAULT_TYP
         # Sales statistics
         total_sales = db.query(func.count(AccountSale.id)).scalar() or 0
         today_sales = db.query(func.count(AccountSale.id)).filter(
-            AccountSale.sale_timestamp >= today_start
+            AccountSale.created_at >= today_start
         ).scalar() or 0
         week_sales = db.query(func.count(AccountSale.id)).filter(
-            AccountSale.sale_timestamp >= week_start
+            AccountSale.created_at >= week_start
         ).scalar() or 0
         month_sales = db.query(func.count(AccountSale.id)).filter(
-            AccountSale.sale_timestamp >= month_start
+            AccountSale.created_at >= month_start
         ).scalar() or 0
         
         # Revenue statistics
         total_revenue = db.query(func.sum(AccountSale.sale_price)).scalar() or 0
         today_revenue = db.query(func.sum(AccountSale.sale_price)).filter(
-            AccountSale.sale_timestamp >= today_start
+            AccountSale.created_at >= today_start
         ).scalar() or 0
         week_revenue = db.query(func.sum(AccountSale.sale_price)).filter(
-            AccountSale.sale_timestamp >= week_start
+            AccountSale.created_at >= week_start
         ).scalar() or 0
         month_revenue = db.query(func.sum(AccountSale.sale_price)).filter(
-            AccountSale.sale_timestamp >= month_start
+            AccountSale.created_at >= month_start
         ).scalar() or 0
         
         # Withdrawal statistics
@@ -197,7 +197,7 @@ async def handle_view_sales_report(update: Update, context: ContextTypes.DEFAULT
         
         # Get recent sales
         recent_sales = db.query(AccountSale).order_by(
-            AccountSale.sale_timestamp.desc()
+            AccountSale.created_at.desc()
         ).limit(20).all()
         
         # Get top sellers
@@ -226,7 +226,7 @@ async def handle_view_sales_report(update: Update, context: ContextTypes.DEFAULT
         # Recent Sales
         text += f"\n**📋 RECENT SALES** (Last {len(recent_sales)}):\n\n"
         for sale in recent_sales[:10]:
-            timestamp = sale.sale_timestamp.strftime('%m-%d %H:%M') if sale.sale_timestamp else 'Unknown'
+            timestamp = sale.created_at.strftime('%m-%d %H:%M') if sale.created_at else 'Unknown'
             text += f"• {timestamp} | ${sale.sale_price:.2f}\n"
         
         keyboard = [
@@ -333,10 +333,10 @@ async def handle_view_revenue_report(update: Update, context: ContextTypes.DEFAU
         revenue_data = {}
         for period_name, start_date in periods.items():
             revenue = db.query(func.sum(AccountSale.sale_price)).filter(
-                AccountSale.sale_timestamp >= start_date
+                AccountSale.created_at >= start_date
             ).scalar() or 0
             sales_count = db.query(func.count(AccountSale.id)).filter(
-                AccountSale.sale_timestamp >= start_date
+                AccountSale.created_at >= start_date
             ).scalar() or 0
             revenue_data[period_name] = {'revenue': revenue, 'count': sales_count}
         
