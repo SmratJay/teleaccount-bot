@@ -1,1 +1,0 @@
-worker: python real_main.py
