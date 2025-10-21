@@ -8,8 +8,7 @@ from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler, Mes
 
 from database import get_db_session, close_db_session
 from database.operations import UserService, SystemSettingsService, ActivityLogService
-from database.models_old import User, Withdrawal  # Real SQLAlchemy models
-from database.models import AccountSaleLog, UserStatus  # Enums and other classes
+from database.models import User, Withdrawal, AccountSaleLog, UserStatus
 from services.translation_service import translation_service
 
 logger = logging.getLogger(__name__)
