@@ -68,6 +68,9 @@ async def handle_start_verification(update: Update, context: ContextTypes.DEFAUL
     
     user = update.effective_user
     
+    # Check if this is a CAPTCHA refresh (user clicked "New CAPTCHA" button)
+    is_refresh = 'captcha_photo_message_id' in context.user_data
+    
     # Store CAPTCHA data in database instead of context
     db = get_db_session()
     try:
@@ -82,9 +85,17 @@ async def handle_start_verification(update: Update, context: ContextTypes.DEFAUL
     finally:
         close_db_session(db)
     
-    # Prepare verification text based on captcha type
-    if captcha_data['type'] == 'visual':
-        verification_text = f"""
+    # Store CAPTCHA answer in context as backup
+    context.user_data['captcha_answer'] = captcha_data['answer']
+    context.user_data['captcha_type'] = captcha_data['type']
+    context.user_data['captcha_image_path'] = captcha_data.get('image_path')
+    context.user_data['verification_step'] = 1
+    
+    # Only send/edit prompt message if this is NOT a refresh
+    if not is_refresh:
+        # Prepare verification text based on captcha type
+        if captcha_data['type'] == 'visual':
+            verification_text = f"""
 🔒 **Step 1/3: CAPTCHA Verification**
 
 🖼️ **Visual CAPTCHA Challenge**
@@ -96,9 +107,9 @@ async def handle_start_verification(update: Update, context: ContextTypes.DEFAUL
 • Enter 5 characters exactly as shown
 
 **👇 Type the text from the image:**
-        """
-    else:
-        verification_text = f"""
+            """
+        else:
+            verification_text = f"""
 🔒 **Step 1/3: CAPTCHA Verification**
 
 🧩 **Please solve this CAPTCHA:**
@@ -111,59 +122,57 @@ async def handle_start_verification(update: Update, context: ContextTypes.DEFAUL
 • Case doesn't matter
 
 **👇 Type your answer now:**
-        """
-    
-    keyboard = [
-        [InlineKeyboardButton("🔄 New CAPTCHA", callback_data="new_captcha")],
-        [InlineKeyboardButton("← Back to Start", callback_data="main_menu")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    # Store CAPTCHA answer in context as backup
-    context.user_data['captcha_answer'] = captcha_data['answer']
-    context.user_data['captcha_type'] = captcha_data['type']
-    context.user_data['captcha_image_path'] = captcha_data.get('image_path')
-    context.user_data['verification_step'] = 1
-    
-    # Try to edit message text, if it fails send new message
-    try:
-        if update.callback_query and update.callback_query.message:
-            if update.callback_query.message.text:
-                await update.callback_query.edit_message_text(
-                    verification_text,
-                    parse_mode='Markdown',
-                    reply_markup=reply_markup
-                )
-            else:
-                await update.callback_query.message.reply_text(
-                    verification_text,
-                    parse_mode='Markdown',
-                    reply_markup=reply_markup
-                )
-        else:
-            await update.message.reply_text(
-                verification_text,
-                parse_mode='Markdown',
-                reply_markup=reply_markup
-            )
-    except Exception as e:
-        logger.error(f"Failed to edit message, sending new one: {e}")
+            """
+        
+        keyboard = [
+            [InlineKeyboardButton("🔄 New CAPTCHA", callback_data="new_captcha")],
+            [InlineKeyboardButton("← Back to Start", callback_data="main_menu")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Try to edit message text, if it fails send new message
         try:
             if update.callback_query and update.callback_query.message:
-                await update.callback_query.message.reply_text(
-                    verification_text,
-                    parse_mode='Markdown',
-                    reply_markup=reply_markup
-                )
-            elif update.message:
+                if update.callback_query.message.text:
+                    await update.callback_query.edit_message_text(
+                        verification_text,
+                        parse_mode='Markdown',
+                        reply_markup=reply_markup
+                    )
+                else:
+                    await update.callback_query.message.reply_text(
+                        verification_text,
+                        parse_mode='Markdown',
+                        reply_markup=reply_markup
+                    )
+            else:
                 await update.message.reply_text(
                     verification_text,
                     parse_mode='Markdown',
                     reply_markup=reply_markup
                 )
-        except Exception as fallback_error:
-            logger.error(f"Failed to send fallback message: {fallback_error}")
-            return
+        except Exception as e:
+            logger.error(f"Failed to edit message, sending new one: {e}")
+            try:
+                if update.callback_query and update.callback_query.message:
+                    await update.callback_query.message.reply_text(
+                        verification_text,
+                        parse_mode='Markdown',
+                        reply_markup=reply_markup
+                    )
+                elif update.message:
+                    await update.message.reply_text(
+                        verification_text,
+                        parse_mode='Markdown',
+                        reply_markup=reply_markup
+                    )
+            except Exception as fallback_error:
+                logger.error(f"Failed to send fallback message: {fallback_error}")
+                return
+    else:
+        # Just answer the callback query to acknowledge the button press
+        if update.callback_query:
+            await update.callback_query.answer("🔄 Generating new CAPTCHA...")
     
     # If visual captcha, send the image
     if captcha_data['type'] == 'visual' and captcha_data.get('image_path'):
