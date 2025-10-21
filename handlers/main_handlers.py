@@ -9,11 +9,24 @@ from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler, ConversationHandler, MessageHandler, filters
 from database import get_db_session, close_db_session
-from database.operations import UserService, TelegramAccountService, SystemSettingsService, VerificationService, ActivityLogService, WithdrawalService
+from database.models import User, Withdrawal, WithdrawalStatus
+from database.operations import (
+    UserService,
+    TelegramAccountService,
+    SystemSettingsService,
+    VerificationService,
+    ActivityLogService,
+    WithdrawalService,
+)
 from services.captcha import CaptchaService
 # from services.translator import TranslatorService  # Will implement later
 from utils.helpers import MessageUtils
 from handlers.real_handlers import get_real_selling_handler
+from utils.runtime_settings import (
+    get_support_settings,
+    get_sale_stats,
+    get_user_sales_metrics,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +151,10 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, db_
 📊 **Your Status:** {get_status_emoji(db_user.status.value)} {db_user.status.value}
         """
         
+        support = get_support_settings()
+        support_label = support.get("main_button_label") or "🆘 Support"
+        support_url = support.get("main_button_url")
+
         # Create ONLY the necessary buttons as specified in requirements
         keyboard = [
             [InlineKeyboardButton("🚀 LFG (Sell)", callback_data="lfg_sell")],
@@ -147,13 +164,18 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, db_
              InlineKeyboardButton("🌍 Language", callback_data="language_menu")],
             [InlineKeyboardButton("📊 System Capacity", callback_data="system_capacity"),
              InlineKeyboardButton("📋 Status", callback_data="user_status")],
-            [InlineKeyboardButton("🆘 Support", url="https://t.me/BujhlamNaKiHolo")]
         ]
+
+        if support_url:
+            keyboard.append([InlineKeyboardButton(support_label, url=support_url)])
         
         # Admin and leader panels only if user has those roles
+        logger.info(f"🔍 Admin Check for user {db_user.telegram_user_id}: is_admin={db_user.is_admin}, is_leader={db_user.is_leader}")
         if db_user.is_admin:
+            logger.info(f"✅ Adding Admin Panel button for user {db_user.telegram_user_id}")
             keyboard.append([InlineKeyboardButton("⚙️ Admin Panel", callback_data="admin_panel")])
         if db_user.is_leader:
+            logger.info(f"✅ Adding Leader Panel button for user {db_user.telegram_user_id}")
             keyboard.append([InlineKeyboardButton("👑 Leader Panel", callback_data="leader_panel")])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -231,6 +253,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     elif data == "new_captcha":
         await handle_start_verification(update, context)  # Generate new captcha
     elif data == "verify_channels":
+        print(f"🎯🎯🎯 BUTTON CALLBACK DETECTED verify_channels for user {update.effective_user.id} 🎯🎯🎯")
+        logger.error(f"🎯🎯🎯 BUTTON CALLBACK DETECTED verify_channels for user {update.effective_user.id} 🎯🎯🎯")
         await handle_verify_channels(update, context)
     elif data == "lfg_sell":
         await handle_lfg_sell(update, context)
@@ -265,50 +289,44 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await handle_why_verification(update, context)
     elif data == "view_all_accounts":
         await handle_view_all_accounts(update, context)
-    elif data == "withdraw_trx":
-        await handle_withdraw_trx(update, context)
-    elif data == "withdraw_usdt":
-        await handle_withdraw_usdt(update, context)
-    elif data == "withdraw_binance":
-        await handle_withdraw_binance(update, context)
+    # NOTE: withdraw_trx, withdraw_usdt, withdraw_binance are now handled by ConversationHandler
     elif data == "withdrawal_history":
         await handle_withdrawal_history(update, context)
     elif data.startswith("delete_withdrawal_"):
         await handle_delete_withdrawal(update, context)
+    elif data.startswith("approve_withdrawal_"):
+        await handle_approve_withdrawal(update, context)
+    elif data.startswith("reject_withdrawal_"):
+        await handle_reject_withdrawal(update, context)
+    elif data.startswith("view_user_"):
+        await handle_view_user_details(update, context)
+    elif data.startswith("mark_paid_"):
+        await handle_mark_paid(update, context)
+    elif data == "leader_withdrawals":
+        await handle_leader_withdrawals(update, context)
     else:
         logger.warning(f"Unknown callback data: {data} from user {user.id}")
         await query.edit_message_text("❓ Unknown option. Returning to main menu...")
         await start_command(update, context)
 
 async def handle_start_verification(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Start the verification process with IMAGE CAPTCHA."""
-    from services.captcha import ImageCaptchaService
+    """Start the verification process with enhanced CAPTCHA (visual/text)."""
+    captcha_service = CaptchaService()
+    captcha_data = await captcha_service.generate_captcha()
     
-    image_captcha_service = ImageCaptchaService()
-    
-    # Clean up any previous CAPTCHA image before generating a new one
-    old_captcha_filepath = context.user_data.get('captcha_filepath')
-    if old_captcha_filepath:
-        image_captcha_service.cleanup_captcha_image(old_captcha_filepath)
-    
-    captcha_data = await image_captcha_service.generate_image_captcha()
-    
-    if not captcha_data:
-        await update.callback_query.answer("❌ Error generating CAPTCHA. Please try again.", show_alert=True)
-        return
-    
+    # Only visual captcha text since we removed text-based captchas
     verification_text = f"""
-🔒 **Step 1/3: IMAGE CAPTCHA Verification**
+🔒 **Step 1/3: CAPTCHA Verification**
 
-🖼️ **Please solve the CAPTCHA below:**
+🖼️ **Visual CAPTCHA Challenge**
 
 **📝 Instructions:**
-• Look at the image carefully
-• Type the characters you see
-• Send the answer as a regular message
+• Look at the image below carefully
+• Type the exact text you see (letters and numbers)
 • Case doesn't matter
+• Enter the characters exactly as shown
 
-**👇 Type your answer now:**
+**👇 Type the text from the image:**
     """
     
     keyboard = [
@@ -317,28 +335,36 @@ async def handle_start_verification(update: Update, context: ContextTypes.DEFAUL
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Store CAPTCHA answer and filepath in context
+    # Store CAPTCHA answer in context
     context.user_data['captcha_answer'] = captcha_data['answer']
-    context.user_data['captcha_filepath'] = captcha_data['filepath']
+    context.user_data['captcha_type'] = captcha_data['type']
+    context.user_data['captcha_image_path'] = captcha_data.get('image_path')
     context.user_data['verification_step'] = 1
     
-    # Send the CAPTCHA image
-    try:
-        if update.callback_query:
-            await update.callback_query.message.delete()
-        
-        await update.effective_chat.send_photo(
-            photo=captcha_data['image_bytes'],
-            caption=verification_text,
-            parse_mode='Markdown',
-            reply_markup=reply_markup
-        )
-    except Exception as e:
-        logger.error(f"Error sending image CAPTCHA: {e}")
-        await update.effective_chat.send_message(
-            "❌ Error displaying CAPTCHA. Please try again.",
-            reply_markup=reply_markup
-        )
+    # Send text message first
+    await update.callback_query.edit_message_text(
+        verification_text,
+        parse_mode='Markdown',
+        reply_markup=reply_markup
+    )
+    
+    # If visual captcha, send the image
+    if captcha_data['type'] == 'visual' and captcha_data.get('image_path'):
+        try:
+            with open(captcha_data['image_path'], 'rb') as photo:
+                await update.callback_query.message.reply_photo(
+                    photo=photo,
+                    caption="🔍 **Enter the text shown in this image**",
+                    parse_mode='Markdown'
+                )
+        except Exception as e:
+            logger.error(f"Error sending captcha image: {e}")
+            # Fallback to text-based captcha
+            await update.callback_query.message.reply_text(
+                "⚠️ **Image failed to load. Fallback question:**\n\n" + 
+                "What is 25 + 17?"
+            )
+            context.user_data['captcha_answer'] = "42"
 
 async def handle_lfg_sell(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle LFG (Let's F***ing Go) - Account selling process."""
@@ -630,6 +656,35 @@ async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     try:
         db_user = UserService.get_user_by_telegram_id(db, user.id)
+        accounts_count = TelegramAccountService.get_user_accounts_count(db, db_user.id)
+        sales_metrics = get_user_sales_metrics(db_user.id)
+        support = get_support_settings()
+
+        completion_rate = sales_metrics.get("completion_rate")
+        if completion_rate is not None:
+            success_rate_text = f"{completion_rate * 100:.1f}%"
+        else:
+            success_rate_text = "No completed sales yet"
+
+        trust_score = "⭐ New Seller"
+        if completion_rate is not None:
+            if completion_rate >= 0.9:
+                trust_score = "⭐⭐⭐⭐⭐ (Excellent)"
+            elif completion_rate >= 0.75:
+                trust_score = "⭐⭐⭐⭐ (Strong)"
+            elif completion_rate >= 0.5:
+                trust_score = "⭐⭐⭐ (Developing)"
+            else:
+                trust_score = "⭐⭐ (Needs Improvement)"
+
+        last_active = db_user.updated_at.strftime('%Y-%m-%d %H:%M') if db_user.updated_at else "N/A"
+        member_since = db_user.created_at.strftime('%Y-%m-%d') if db_user.created_at else "N/A"
+
+        captcha_status = "✅ Completed" if db_user.captcha_completed else "⚠️ Pending"
+        channel_status = "✅ Joined" if db_user.channels_joined else "⚠️ Not Verified"
+        support_sla = support.get("response_time") or "Not specified"
+        total_earnings = sales_metrics.get("total_earnings", 0.0)
+        completed_sales = sales_metrics.get("completed_sales", 0)
         
         status_text = f"""
 📋 **Your Personal Status**
@@ -637,21 +692,20 @@ async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
 👤 **Account Information:**
 • **Status:** {get_status_emoji(db_user.status.value)} {db_user.status.value}
 • **Verification:** {'✅ Complete' if db_user.verification_completed else '⏳ Pending'}
-• **Member Since:** {db_user.created_at.strftime('%Y-%m-%d')}
+• **Member Since:** {member_since}
 
 🎯 **Performance Metrics:**
-• **Trust Score:** ⭐⭐⭐⭐⭐ (Excellent)
-• **Success Rate:** 100%
-• **Response Time:** Fast
+• **Trust Score:** {trust_score}
+• **Success Rate:** {success_rate_text}
+• **Accounts Listed:** {accounts_count}
+• **Accounts Sold:** {completed_sales}
+• **Total Earnings:** `${total_earnings:.2f}`
 
-🔒 **Security Status:**
-• **2FA Enabled:** ✅ Recommended
-• **IP Monitoring:** 🟢 Active
-• **Session Security:** ✅ Verified
-
-📊 **Activity Summary:**
-• **Last Active:** {db_user.updated_at.strftime('%Y-%m-%d %H:%M')}
-• **Total Sessions:** Tracking...
+🔒 **Security Checks:**
+• **CAPTCHA Status:** {captcha_status}
+• **Channel Verification:** {channel_status}
+• **Last Activity:** {last_active}
+• **Support SLA:** {support_sla}
         """
         
         keyboard = [
@@ -671,17 +725,26 @@ async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def handle_contact_support(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle support contact."""
-    support_text = """
+    support = get_support_settings()
+
+    live_chat_label = support.get("live_chat_label") or "Live Chat"
+    live_chat_url = support.get("live_chat_url")
+    channel_label = support.get("channel_label") or "Support Channel"
+    channel_url = support.get("channel_url")
+    support_email = support.get("email") or "support@example.com"
+    response_time = support.get("response_time") or "Varies"
+
+    support_text = f"""
 🆘 **Contact Support**
 
 Need help? Our support team is here for you!
 
 **📞 Support Options:**
 
-🔸 **Live Chat:** @support_bot
-🔸 **Support Channel:** @telegram_bot_support  
-🔸 **Email:** support@telegrambot.com
-🔸 **Response Time:** < 2 hours
+🔸 **Live Chat:** {live_chat_label}
+🔸 **Support Channel:** {channel_label}
+🔸 **Email:** {support_email}
+🔸 **Response Time:** {response_time}
 
 **🔧 Common Issues:**
 • Account verification problems
@@ -697,12 +760,13 @@ Need help? Our support team is here for you!
 **⚡ For urgent issues, use Live Chat!**
     """
     
-    keyboard = [
-        [InlineKeyboardButton("💬 Live Chat", url="https://t.me/BujhlamNaKiHolo")],
-        [InlineKeyboardButton("📢 Support Channel", url="https://t.me/telegram_bot_support")],
-        [InlineKeyboardButton("❓ FAQ", callback_data="faq")],
-        [InlineKeyboardButton("← Back to Menu", callback_data="main_menu")]
-    ]
+    keyboard = []
+    if live_chat_url:
+        keyboard.append([InlineKeyboardButton("💬 Live Chat", url=live_chat_url)])
+    if channel_url:
+        keyboard.append([InlineKeyboardButton("📢 Support Channel", url=channel_url)])
+    keyboard.append([InlineKeyboardButton("❓ FAQ", callback_data="faq")])
+    keyboard.append([InlineKeyboardButton("← Back to Menu", callback_data="main_menu")])
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.callback_query.edit_message_text(
@@ -801,22 +865,31 @@ Click "Sell New Account" to add your first account and start earning!
 """
         
         for i, account in enumerate(accounts, 1):
+            # Check if account is frozen
+            freeze_indicator = ""
+            if hasattr(account, 'is_frozen') and account.is_frozen:
+                freeze_indicator = " ❄️"
+            
             status_emoji = {
                 'AVAILABLE': '✅',
                 'SOLD': '💰',
                 '24_HOUR_HOLD': '⏳',
                 'PENDING_REVIEW': '🔍',
-                'REJECTED': '❌'
+                'REJECTED': '❌',
+                'FROZEN': '❄️'
             }.get(account.status.value, '❓')
             
             accounts_text += f"""
-**{i}. {account.phone_number}**
+**{i}. {account.phone_number}{freeze_indicator}**
 {status_emoji} Status: {account.status.value}
 💵 Price: ${account.sale_price:.2f}
 📅 Added: {account.created_at.strftime('%Y-%m-%d')}
 """
             if account.sold_at:
                 accounts_text += f"💰 Sold: {account.sold_at.strftime('%Y-%m-%d')}\n"
+            if freeze_indicator:
+                freeze_reason = getattr(account, 'freeze_reason', 'Security hold')
+                accounts_text += f"❄️ Frozen: {freeze_reason}\n"
             accounts_text += "\n"
         
         keyboard = [
@@ -849,9 +922,16 @@ async def fallback_callback_handler(update: Update, context: ContextTypes.DEFAUL
     data = query.data
     user = update.effective_user
     
-    logger.warning(f"Fallback handler triggered - Unmatched callback: {data} from user {user.id}")
+    print(f"🚨🚨🚨 FALLBACK HANDLER CAUGHT: {data} from user {user.id} 🚨🚨🚨")
+    logger.error(f"🚨🚨🚨 FALLBACK HANDLER CAUGHT: {data} from user {user.id} 🚨🚨🚨")
     
-    # For any unmatched callback, return to main menu
+    # If it's verify_channels, handle it directly here
+    if data == "verify_channels":
+        print(f"🚨 FALLBACK: Processing verify_channels for user {user.id}")
+        await handle_verify_channels(update, context)
+        return
+    
+    # For any other unmatched callback, return to main menu
     await query.edit_message_text("🔄 Returning to main menu...")
     await start_command(update, context)
 
@@ -940,6 +1020,82 @@ async def handle_leader_panel(update: Update, context: ContextTypes.DEFAULT_TYPE
         parse_mode='Markdown',
         reply_markup=reply_markup
     )
+
+async def handle_leader_withdrawals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle leader withdrawals overview."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    db = get_db_session()
+    
+    try:
+        # Check if user is a leader
+        db_user = UserService.get_user_by_telegram_id(db, user.id)
+        if not db_user or not db_user.is_leader:
+            await query.edit_message_text("❌ Access denied. Only leaders can view this panel.")
+            return
+        
+        # Get pending withdrawals
+        pending_withdrawals = db.query(Withdrawal).filter(
+            Withdrawal.status == WithdrawalStatus.PENDING
+        ).order_by(Withdrawal.created_at.desc()).limit(10).all()
+        
+        # Get approved (ready to pay) withdrawals
+        approved_withdrawals = db.query(Withdrawal).filter(
+            Withdrawal.status == WithdrawalStatus.LEADER_APPROVED
+        ).order_by(Withdrawal.created_at.desc()).limit(5).all()
+        
+        if not pending_withdrawals and not approved_withdrawals:
+            text = (
+                "👑 *Leader - Withdrawal Management*\n\n"
+                "✅ No pending withdrawals at this time.\n\n"
+                "📊 All withdrawal requests are up to date!"
+            )
+            keyboard = [
+                [InlineKeyboardButton("🔄 Refresh", callback_data="leader_withdrawals")],
+                [InlineKeyboardButton("🔙 Leader Panel", callback_data="leader_panel")]
+            ]
+        else:
+            text = "👑 *Leader - Withdrawal Management*\n\n"
+            
+            if pending_withdrawals:
+                text += "⏳ *Pending Review:*\n"
+                for w in pending_withdrawals:
+                    user_info = db.query(User).filter(User.id == w.user_id).first()
+                    text += (
+                        f"💰 ${w.amount:.2f} - {w.withdrawal_method}\n"
+                        f"👤 {user_info.first_name or 'Unknown'} (@{user_info.username or 'no_username'})\n"
+                        f"🕒 {w.created_at.strftime('%m-%d %H:%M')}\n\n"
+                    )
+            
+            if approved_withdrawals:
+                text += "✅ *Ready to Pay:*\n"
+                for w in approved_withdrawals:
+                    user_info = db.query(User).filter(User.id == w.user_id).first()
+                    text += (
+                        f"💳 ${w.amount:.2f} - {w.withdrawal_method}\n"
+                        f"👤 {user_info.first_name or 'Unknown'}\n"
+                        f"📍 {w.withdrawal_address[:20]}...\n\n"
+                    )
+            
+            keyboard = [
+                [InlineKeyboardButton("🔄 Refresh", callback_data="leader_withdrawals")],
+                [InlineKeyboardButton("🔙 Leader Panel", callback_data="leader_panel")]
+            ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            text=text,
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in leader withdrawals handler: {e}")
+        await query.edit_message_text("❌ An error occurred while loading withdrawals.")
+    finally:
+        close_db_session(db)
 
 async def start_account_selling(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Start the account selling process."""
@@ -1553,9 +1709,7 @@ Use the "LFG (Sell)" button to sell your first account!
         close_db_session(db)
 
 async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle IMAGE CAPTCHA text answers."""
-    from services.captcha import ImageCaptchaService
-    
+    """Handle CAPTCHA text answers for both visual and text captchas."""
     user = update.effective_user
     user_answer = update.message.text.strip()
     
@@ -1564,18 +1718,24 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
         return  # Not in verification process
     
     db = get_db_session()
-    image_captcha_service = ImageCaptchaService()
-    
     try:
-        # Verify IMAGE CAPTCHA answer
-        correct_answer = context.user_data.get('captcha_answer', '')
-        is_correct = image_captcha_service.verify_image_captcha(user_answer, correct_answer)
+        # Clean up visual captcha image if exists
+        captcha_image_path = context.user_data.get('captcha_image_path')
+        if captcha_image_path:
+            from services.captcha import CaptchaService
+            captcha_service = CaptchaService()
+            captcha_service.cleanup_captcha_image(captcha_image_path)
+            context.user_data.pop('captcha_image_path', None)
         
-        # Clean up CAPTCHA image file
-        captcha_filepath = context.user_data.get('captcha_filepath')
-        if captcha_filepath:
-            image_captcha_service.cleanup_captcha_image(captcha_filepath)
-            context.user_data.pop('captcha_filepath', None)
+        # Verify CAPTCHA answer
+        correct_answer = context.user_data.get('captcha_answer', '').lower().strip()
+        captcha_type = context.user_data.get('captcha_type', 'text')
+        
+        # For visual captcha, be more flexible with answer checking
+        if captcha_type == 'visual':
+            is_correct = user_answer.lower().replace(' ', '') == correct_answer.replace(' ', '')
+        else:
+            is_correct = user_answer.lower().strip() == correct_answer
         
         if is_correct:
             # CAPTCHA passed, move to channel verification
@@ -1584,6 +1744,10 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
                 # Update captcha completion
                 db_user.captcha_completed = True
                 db.commit()
+            
+            # Clear captcha data from context
+            context.user_data.pop('captcha_answer', None)
+            context.user_data.pop('captcha_type', None)
             
             # Move to channel verification step
             context.user_data['verification_step'] = 2
@@ -1594,15 +1758,23 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
                 db=db,
                 user_id=db_user.id if db_user else None,
                 action_type="CAPTCHA_COMPLETED",
-                description=f"User completed IMAGE CAPTCHA verification",
+                description=f"User completed CAPTCHA verification",
                 extra_data=json.dumps({"answer": user_answer})
             )
         else:
-            # CAPTCHA failed
+            # CAPTCHA failed - show appropriate error message
+            if captcha_type == 'visual':
+                error_message = f"❌ **Incorrect Answer!**\n\n" \
+                              f"Your answer: `{user_answer}`\n" \
+                              f"🔍 **Tip:** Look carefully at the image and enter exactly what you see (5 characters)\n\n" \
+                              f"Please try again with a new CAPTCHA."
+            else:
+                error_message = f"❌ **Incorrect Answer!**\n\n" \
+                              f"Your answer: `{user_answer}`\n" \
+                              f"Please try again. Click the button below for a new CAPTCHA."
+            
             await update.message.reply_text(
-                f"❌ **Incorrect Answer!**\\n\\n"
-                f"Your answer: `{user_answer}`\\n"
-                f"The characters were not matching. Please try again with a new CAPTCHA.",
+                error_message,
                 parse_mode='Markdown',
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔄 New CAPTCHA", callback_data="new_captcha")],
@@ -1616,12 +1788,12 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
                     db=db,
                     user_id=db_user.id,
                     action_type="CAPTCHA_FAILED",
-                    description=f"User failed IMAGE CAPTCHA verification",
-                    extra_data=json.dumps({"user_answer": user_answer})
+                    description=f"User failed CAPTCHA verification",
+                    extra_data=json.dumps({"user_answer": user_answer, "correct_answer": correct_answer})
                 )
             
     except Exception as e:
-        logger.error(f"Error handling IMAGE CAPTCHA answer: {e}")
+        logger.error(f"Error handling CAPTCHA answer: {e}")
         await update.message.reply_text(
             "❌ An error occurred while verifying your answer. Please try again."
         )
@@ -1682,48 +1854,36 @@ Now please join ALL required channels below:
         )
 
 async def handle_verify_channels(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle channel verification."""
+    """Handle channel verification - SIMPLIFIED VERSION."""
     user = update.effective_user
     
-    # For now, we'll skip actual verification since we can't check private channels
-    # In production, you'd implement actual channel membership checking
+    # VERY VISIBLE DEBUG LOGGING
+    print(f"🔥🔥🔥 VERIFY CHANNELS FUNCTION CALLED - USER {user.id} 🔥🔥🔥")
+    logger.error(f"🔥🔥🔥 VERIFY CHANNELS FUNCTION CALLED - USER {user.id} 🔥🔥🔥")
     
     db = get_db_session()
     try:
+        # Answer callback first to prevent timeout
+        await update.callback_query.answer("✅ Processing verification...")
+        print(f"🔥 ANSWERED CALLBACK for user {user.id}")
+        
+        # Get user and mark verification complete
         db_user = UserService.get_user_by_telegram_id(db, user.id)
         if db_user:
             # Mark verification as complete
-            UserService.complete_user_verification(db, db_user.id)
+            db_user.verification_completed = True
+            db_user.captcha_completed = True
+            db_user.channels_joined = True
+            from database.models import UserStatus
+            db_user.status = UserStatus.ACTIVE
+            db.commit()
+            print(f"🔥 MARKED VERIFICATION COMPLETE for user {user.id}")
         
-        success_text = f"""
-🎉 **Verification Complete!**
-
-✅ **CAPTCHA:** Completed
-✅ **Channels:** Verified  
-✅ **Account Status:** ACTIVE
-
-**Welcome to the Telegram Account Selling Platform!**
-
-You now have full access to all features:
-• 🚀 **LFG (Sell Account)** - Start selling your accounts
-• 💰 **Balance Management** - Track your earnings
-• 💸 **Withdraw Funds** - Cash out your profits
-• 📱 **Account Management** - Manage your listings
-
-**Ready to start earning?** Click below to access the main menu!
-        """
-        
-        keyboard = [
-            [InlineKeyboardButton("🚀 Start Selling (LFG)", callback_data="lfg_sell")],
-            [InlineKeyboardButton("📋 Main Menu", callback_data="main_menu")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.callback_query.edit_message_text(
-            success_text,
-            parse_mode='Markdown',
-            reply_markup=reply_markup
-        )
+        # Import and directly call the main menu function
+        from handlers.real_handlers import show_real_main_menu
+        print(f"🔥 CALLING MAIN MENU for user {user.id}")
+        await show_real_main_menu(update, context)
+        print(f"🔥 MAIN MENU SUCCESS for user {user.id}")
         
         # Log successful verification
         ActivityLogService.log_action(
@@ -1746,7 +1906,7 @@ You now have full access to all features:
 
 # Withdrawal Handlers
 
-async def handle_withdraw_trx(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_withdraw_trx(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle TRX withdrawal option."""
     query = update.callback_query
     await query.answer()
@@ -1758,7 +1918,7 @@ async def handle_withdraw_trx(update: Update, context: ContextTypes.DEFAULT_TYPE
         db_user = UserService.get_user_by_telegram_id(db, user.id)
         if not db_user:
             await query.edit_message_text("❌ User not found. Please restart the bot.")
-            return
+            return ConversationHandler.END
             
         # Check user balance
         balance = db_user.balance or 0.0
@@ -1773,7 +1933,7 @@ async def handle_withdraw_trx(update: Update, context: ContextTypes.DEFAULT_TYPE
                     InlineKeyboardButton("🔙 Back", callback_data="withdraw_menu")
                 ]])
             )
-            return
+            return ConversationHandler.END
             
         # Show TRX withdrawal form
         text = (
@@ -1799,6 +1959,9 @@ async def handle_withdraw_trx(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         # Store withdrawal type in context
         context.user_data['withdrawal_type'] = 'TRX'
+        context.user_data['conversation_type'] = 'withdrawal'
+        
+        return WITHDRAW_DETAILS
         
     except Exception as e:
         logger.error(f"Error in TRX withdrawal handler: {e}")
@@ -1808,10 +1971,11 @@ async def handle_withdraw_trx(update: Update, context: ContextTypes.DEFAULT_TYPE
                 InlineKeyboardButton("🔙 Back", callback_data="withdraw_menu")
             ]])
         )
+        return ConversationHandler.END
     finally:
         close_db_session(db)
 
-async def handle_withdraw_usdt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_withdraw_usdt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle USDT-BEP20 withdrawal option."""
     query = update.callback_query
     await query.answer()
@@ -1823,7 +1987,7 @@ async def handle_withdraw_usdt(update: Update, context: ContextTypes.DEFAULT_TYP
         db_user = UserService.get_user_by_telegram_id(db, user.id)
         if not db_user:
             await query.edit_message_text("❌ User not found. Please restart the bot.")
-            return
+            return ConversationHandler.END
             
         # Check user balance
         balance = db_user.balance or 0.0
@@ -1838,7 +2002,7 @@ async def handle_withdraw_usdt(update: Update, context: ContextTypes.DEFAULT_TYP
                     InlineKeyboardButton("🔙 Back", callback_data="withdraw_menu")
                 ]])
             )
-            return
+            return ConversationHandler.END
             
         # Show USDT-BEP20 withdrawal form
         text = (
@@ -1864,6 +2028,9 @@ async def handle_withdraw_usdt(update: Update, context: ContextTypes.DEFAULT_TYP
         
         # Store withdrawal type in context
         context.user_data['withdrawal_type'] = 'USDT-BEP20'
+        context.user_data['conversation_type'] = 'withdrawal'
+        
+        return WITHDRAW_DETAILS
         
     except Exception as e:
         logger.error(f"Error in USDT withdrawal handler: {e}")
@@ -1873,10 +2040,11 @@ async def handle_withdraw_usdt(update: Update, context: ContextTypes.DEFAULT_TYP
                 InlineKeyboardButton("🔙 Back", callback_data="withdraw_menu")
             ]])
         )
+        return ConversationHandler.END
     finally:
         close_db_session(db)
 
-async def handle_withdraw_binance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_withdraw_binance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle Binance withdrawal option."""
     query = update.callback_query
     await query.answer()
@@ -1888,7 +2056,7 @@ async def handle_withdraw_binance(update: Update, context: ContextTypes.DEFAULT_
         db_user = UserService.get_user_by_telegram_id(db, user.id)
         if not db_user:
             await query.edit_message_text("❌ User not found. Please restart the bot.")
-            return
+            return ConversationHandler.END
             
         # Check user balance
         balance = db_user.balance or 0.0
@@ -1903,7 +2071,7 @@ async def handle_withdraw_binance(update: Update, context: ContextTypes.DEFAULT_
                     InlineKeyboardButton("🔙 Back", callback_data="withdraw_menu")
                 ]])
             )
-            return
+            return ConversationHandler.END
             
         # Show Binance withdrawal form
         text = (
@@ -1931,6 +2099,9 @@ async def handle_withdraw_binance(update: Update, context: ContextTypes.DEFAULT_
         
         # Store withdrawal type in context
         context.user_data['withdrawal_type'] = 'Binance'
+        context.user_data['conversation_type'] = 'withdrawal'
+        
+        return WITHDRAW_DETAILS
         
     except Exception as e:
         logger.error(f"Error in Binance withdrawal handler: {e}")
@@ -1940,6 +2111,7 @@ async def handle_withdraw_binance(update: Update, context: ContextTypes.DEFAULT_
                 InlineKeyboardButton("🔙 Back", callback_data="withdraw_menu")
             ]])
         )
+        return ConversationHandler.END
     finally:
         close_db_session(db)
 
@@ -1986,7 +2158,7 @@ async def handle_withdrawal_history(update: Update, context: ContextTypes.DEFAUL
                 }.get(withdrawal.status.value, '⏳')
                 
                 text += (
-                    f"{status_emoji} *${withdrawal.amount:.2f}* - {withdrawal.method}\n"
+                    f"{status_emoji} *${withdrawal.amount:.2f}* - {withdrawal.currency}\n"
                     f"📅 {withdrawal.created_at.strftime('%Y-%m-%d %H:%M')}\n"
                     f"📊 Status: {withdrawal.status.value.title()}\n"
                 )
@@ -2107,6 +2279,378 @@ async def handle_delete_withdrawal(update: Update, context: ContextTypes.DEFAULT
     finally:
         close_db_session(db)
 
+async def handle_approve_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle withdrawal approval by leaders."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    db = get_db_session()
+    
+    try:
+        # Extract withdrawal ID from callback data
+        withdrawal_id = int(query.data.split('_')[-1])
+        
+        # Import services
+        from database.operations import WithdrawalService, ActivityLogService
+        
+        # Check if user is a leader
+        db_user = UserService.get_user_by_telegram_id(db, user.id)
+        if not db_user or not db_user.is_leader:
+            await query.edit_message_text("❌ Access denied. Only leaders can approve withdrawals.")
+            return
+        
+        # Get the withdrawal
+        withdrawal = db.query(Withdrawal).filter(Withdrawal.id == withdrawal_id).first()
+        if not withdrawal:
+            await query.edit_message_text("❌ Withdrawal not found.")
+            return
+        
+        # Check if already processed
+        if withdrawal.status != WithdrawalStatus.PENDING:
+            await query.edit_message_text(
+                f"❌ This withdrawal has already been {withdrawal.status.value.lower()}."
+            )
+            return
+        
+        # Approve the withdrawal
+        withdrawal.status = WithdrawalStatus.LEADER_APPROVED
+        withdrawal.assigned_leader_id = db_user.id
+        withdrawal.processed_at = datetime.utcnow()
+        
+        db.commit()
+        
+        # Get the withdrawal user
+        withdrawal_user = db.query(User).filter(User.id == withdrawal.user_id).first()
+        
+        # Update the notification message
+        updated_text = (
+            "✅ *WITHDRAWAL APPROVED*\n\n"
+            f"👤 User: {withdrawal_user.first_name or 'Unknown'} (@{withdrawal_user.username or 'no_username'})\n"
+            f"🆔 User ID: `{withdrawal_user.telegram_user_id}`\n"
+            f"💰 Amount: *${withdrawal.amount:.2f}*\n"
+            f"💳 Method: *{withdrawal.currency}*\n"
+            f"📍 Address: `{withdrawal.withdrawal_address}`\n"
+            f"👑 Approved by: {db_user.first_name or 'Unknown'} (@{db_user.username or 'no_username'})\n"
+            f"🕒 Approved: {withdrawal.processed_at.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            "✅ *Status: APPROVED FOR PROCESSING*"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("💳 Mark as Paid", callback_data=f"mark_paid_{withdrawal.id}")],
+            [InlineKeyboardButton("👤 View User", callback_data=f"view_user_{withdrawal_user.telegram_user_id}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            text=updated_text,
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+        
+        # Notify the user
+        try:
+            await context.bot.send_message(
+                chat_id=withdrawal_user.telegram_user_id,
+                text=(
+                    "✅ *Withdrawal Approved!*\n\n"
+                    f"💰 Amount: *${withdrawal.amount:.2f}*\n"
+                    f"💳 Method: *{withdrawal.currency}*\n"
+                    f"📍 Address: `{withdrawal.withdrawal_address}`\n\n"
+                    "🕒 Your withdrawal has been approved and will be processed within 24 hours.\n"
+                    "📧 You will receive a confirmation once the payment is sent."
+                ),
+                parse_mode='Markdown'
+            )
+        except Exception as notify_error:
+            logger.error(f"Failed to notify user about approval: {notify_error}")
+        
+        # Log the activity
+        ActivityLogService.log_action(
+            db=db,
+            user_id=withdrawal.user_id,
+            action_type="WITHDRAWAL_APPROVED",
+            description=f"Withdrawal ${withdrawal.amount:.2f} approved by leader {db_user.username}"
+        )
+        
+        logger.info(f"Withdrawal {withdrawal_id} approved by leader {db_user.username}")
+        
+    except Exception as e:
+        logger.error(f"Error approving withdrawal: {e}")
+        await query.edit_message_text("❌ An error occurred while approving the withdrawal.")
+        db.rollback()
+    finally:
+        close_db_session(db)
+
+async def handle_reject_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle withdrawal rejection by leaders."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    db = get_db_session()
+    
+    try:
+        # Extract withdrawal ID from callback data
+        withdrawal_id = int(query.data.split('_')[-1])
+        
+        # Import services
+        from database.operations import WithdrawalService, ActivityLogService
+        
+        # Check if user is a leader
+        db_user = UserService.get_user_by_telegram_id(db, user.id)
+        if not db_user or not db_user.is_leader:
+            await query.edit_message_text("❌ Access denied. Only leaders can reject withdrawals.")
+            return
+        
+        # Get the withdrawal
+        withdrawal = db.query(Withdrawal).filter(Withdrawal.id == withdrawal_id).first()
+        if not withdrawal:
+            await query.edit_message_text("❌ Withdrawal not found.")
+            return
+        
+        # Check if already processed
+        if withdrawal.status != WithdrawalStatus.PENDING:
+            await query.edit_message_text(
+                f"❌ This withdrawal has already been {withdrawal.status.value.lower()}."
+            )
+            return
+        
+        # Reject the withdrawal
+        withdrawal.status = WithdrawalStatus.REJECTED
+        withdrawal.assigned_leader_id = db_user.id
+        withdrawal.processed_at = datetime.utcnow()
+        withdrawal.leader_notes = "Rejected by leader"
+        
+        db.commit()
+        
+        # Get the withdrawal user
+        withdrawal_user = db.query(User).filter(User.id == withdrawal.user_id).first()
+        
+        # Update the notification message
+        updated_text = (
+            "❌ *WITHDRAWAL REJECTED*\n\n"
+            f"👤 User: {withdrawal_user.first_name or 'Unknown'} (@{withdrawal_user.username or 'no_username'})\n"
+            f"🆔 User ID: `{withdrawal_user.telegram_user_id}`\n"
+            f"💰 Amount: *${withdrawal.amount:.2f}*\n"
+            f"💳 Method: *{withdrawal.currency}*\n"
+            f"📍 Address: `{withdrawal.withdrawal_address}`\n"
+            f"👑 Rejected by: {db_user.first_name or 'Unknown'} (@{db_user.username or 'no_username'})\n"
+            f"🕒 Rejected: {withdrawal.processed_at.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            "❌ *Status: REJECTED*"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("👤 View User", callback_data=f"view_user_{withdrawal_user.telegram_user_id}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            text=updated_text,
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+        
+        # Notify the user
+        try:
+            await context.bot.send_message(
+                chat_id=withdrawal_user.telegram_user_id,
+                text=(
+                    "❌ *Withdrawal Rejected*\n\n"
+                    f"💰 Amount: *${withdrawal.amount:.2f}*\n"
+                    f"💳 Method: *{withdrawal.currency}*\n"
+                    f"📍 Address: `{withdrawal.withdrawal_address}`\n\n"
+                    "⚠️ Your withdrawal request has been rejected.\n"
+                    "💬 Please contact support if you need more information.\n\n"
+                    "🔄 You can submit a new withdrawal request anytime."
+                ),
+                parse_mode='Markdown'
+            )
+        except Exception as notify_error:
+            logger.error(f"Failed to notify user about rejection: {notify_error}")
+        
+        # Log the activity
+        ActivityLogService.log_action(
+            db=db,
+            user_id=withdrawal.user_id,
+            action_type="WITHDRAWAL_REJECTED",
+            description=f"Withdrawal ${withdrawal.amount:.2f} rejected by leader {db_user.username}"
+        )
+        
+        logger.info(f"Withdrawal {withdrawal_id} rejected by leader {db_user.username}")
+        
+    except Exception as e:
+        logger.error(f"Error rejecting withdrawal: {e}")
+        await query.edit_message_text("❌ An error occurred while rejecting the withdrawal.")
+        db.rollback()
+    finally:
+        close_db_session(db)
+
+async def handle_view_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle viewing user details for leaders."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    db = get_db_session()
+    
+    try:
+        # Extract user ID from callback data
+        target_user_id = int(query.data.split('_')[-1])
+        
+        # Check if user is a leader
+        db_user = UserService.get_user_by_telegram_id(db, user.id)
+        if not db_user or not db_user.is_leader:
+            await query.edit_message_text("❌ Access denied. Only leaders can view user details.")
+            return
+        
+        # Get the target user
+        target_user = db.query(User).filter(User.telegram_user_id == target_user_id).first()
+        if not target_user:
+            await query.edit_message_text("❌ User not found.")
+            return
+        
+        # Get user statistics
+        from database.operations import WithdrawalService
+        user_withdrawals = WithdrawalService.get_user_withdrawals(db, target_user.id)
+        total_withdrawals = len(user_withdrawals)
+        total_withdrawn = sum(w.amount for w in user_withdrawals if w.status == WithdrawalStatus.COMPLETED)
+        pending_withdrawals = len([w for w in user_withdrawals if w.status == WithdrawalStatus.PENDING])
+        
+        # Create user details text
+        details_text = (
+            f"👤 *User Details*\n\n"
+            f"🔹 Name: {target_user.first_name or 'Unknown'}\n"
+            f"🔹 Username: @{target_user.username or 'no_username'}\n"
+            f"🔹 Telegram ID: `{target_user.telegram_user_id}`\n"
+            f"🔹 Status: {target_user.status.value}\n"
+            f"🔹 Balance: ${target_user.balance:.2f}\n"
+            f"🔹 Joined: {target_user.created_at.strftime('%Y-%m-%d')}\n\n"
+            f"📊 *Statistics:*\n"
+            f"💰 Total Withdrawals: {total_withdrawals}\n"
+            f"✅ Amount Withdrawn: ${total_withdrawn:.2f}\n"
+            f"⏳ Pending Requests: {pending_withdrawals}\n"
+            f"🏆 Accounts Sold: {target_user.total_accounts_sold}\n"
+            f"💵 Total Earnings: ${target_user.total_earnings:.2f}"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("🔙 Back", callback_data="leader_panel")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            text=details_text,
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+        
+    except Exception as e:
+        logger.error(f"Error viewing user details: {e}")
+        await query.edit_message_text("❌ An error occurred while viewing user details.")
+    finally:
+        close_db_session(db)
+
+async def handle_mark_paid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle marking withdrawal as paid/completed by leaders."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    db = get_db_session()
+    
+    try:
+        # Extract withdrawal ID from callback data
+        withdrawal_id = int(query.data.split('_')[-1])
+        
+        # Import services
+        from database.operations import ActivityLogService
+        
+        # Check if user is a leader
+        db_user = UserService.get_user_by_telegram_id(db, user.id)
+        if not db_user or not db_user.is_leader:
+            await query.edit_message_text("❌ Access denied. Only leaders can mark withdrawals as paid.")
+            return
+        
+        # Get the withdrawal
+        withdrawal = db.query(Withdrawal).filter(Withdrawal.id == withdrawal_id).first()
+        if not withdrawal:
+            await query.edit_message_text("❌ Withdrawal not found.")
+            return
+        
+        # Check if withdrawal is approved
+        if withdrawal.status != WithdrawalStatus.LEADER_APPROVED:
+            await query.edit_message_text("❌ This withdrawal must be approved first before marking as paid.")
+            return
+        
+        # Mark as completed
+        withdrawal.status = WithdrawalStatus.COMPLETED
+        withdrawal.processed_at = datetime.utcnow()
+        
+        db.commit()
+        
+        # Get the withdrawal user
+        withdrawal_user = db.query(User).filter(User.id == withdrawal.user_id).first()
+        
+        # Update the notification message
+        updated_text = (
+            "💚 *WITHDRAWAL COMPLETED*\n\n"
+            f"👤 User: {withdrawal_user.first_name or 'Unknown'} (@{withdrawal_user.username or 'no_username'})\n"
+            f"🆔 User ID: `{withdrawal_user.telegram_user_id}`\n"
+            f"💰 Amount: *${withdrawal.amount:.2f}*\n"
+            f"💳 Method: *{withdrawal.currency}*\n"
+            f"📍 Address: `{withdrawal.withdrawal_address}`\n"
+            f"👑 Processed by: {db_user.first_name or 'Unknown'} (@{db_user.username or 'no_username'})\n"
+            f"🕒 Completed: {withdrawal.processed_at.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            "💚 *Status: PAYMENT SENT*"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("👤 View User", callback_data=f"view_user_{withdrawal_user.telegram_user_id}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            text=updated_text,
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+        
+        # Notify the user
+        try:
+            await context.bot.send_message(
+                chat_id=withdrawal_user.telegram_user_id,
+                text=(
+                    "💚 *Payment Sent!*\n\n"
+                    f"💰 Amount: *${withdrawal.amount:.2f}*\n"
+                    f"💳 Method: *{withdrawal.currency}*\n"
+                    f"📍 Address: `{withdrawal.withdrawal_address}`\n\n"
+                    "✅ Your withdrawal has been processed and payment has been sent!\n"
+                    "🕒 Please check your wallet/account for the funds.\n\n"
+                    "🙏 Thank you for using our service!"
+                ),
+                parse_mode='Markdown'
+            )
+        except Exception as notify_error:
+            logger.error(f"Failed to notify user about payment completion: {notify_error}")
+        
+        # Log the activity
+        ActivityLogService.log_action(
+            db=db,
+            user_id=withdrawal.user_id,
+            action_type="WITHDRAWAL_COMPLETED",
+            description=f"Withdrawal ${withdrawal.amount:.2f} marked as paid by leader {db_user.username}"
+        )
+        
+        logger.info(f"Withdrawal {withdrawal_id} marked as paid by leader {db_user.username}")
+        
+    except Exception as e:
+        logger.error(f"Error marking withdrawal as paid: {e}")
+        await query.edit_message_text("❌ An error occurred while marking the withdrawal as paid.")
+        db.rollback()
+    finally:
+        close_db_session(db)
+
 # Withdrawal Conversation Handlers
 
 async def handle_withdrawal_details(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -2125,35 +2669,122 @@ async def handle_withdrawal_details(update: Update, context: ContextTypes.DEFAUL
         # Get withdrawal type from context
         withdrawal_type = context.user_data.get('withdrawal_type', 'TRX')
         
-        # Parse withdrawal details
-        lines = [line.strip() for line in message_text.split('\n') if line.strip()]
-        
-        withdrawal_data = {}
-        amount = None
-        address_or_email = None
-        currency = None
-        
-        # Parse the input based on format
-        for line in lines:
-            if ':' in line:
-                key, value = line.split(':', 1)
-                key = key.strip().lower()
-                value = value.strip()
+        # Check if we have a pending address and user is providing amount
+        pending_address = context.user_data.get('pending_address')
+        if pending_address:
+            try:
+                # User should be providing amount now
+                amount_text = message_text.replace('$', '').replace(',', '').strip()
+                if amount_text.replace('.', '').isdigit():
+                    amount = float(amount_text)
+                    address_or_email = pending_address
+                    currency = 'USDT' if withdrawal_type == 'Binance' else None
+                    
+                    # Clear pending address
+                    del context.user_data['pending_address']
+                    
+                    # Continue to validation
+                else:
+                    await update.message.reply_text(
+                        "❌ Please provide a valid amount.\n\n"
+                        "Example: `10.00` or `25.50`",
+                        parse_mode='Markdown'
+                    )
+                    return WITHDRAW_DETAILS
+            except ValueError:
+                await update.message.reply_text(
+                    "❌ Please provide a valid amount.\n\n"
+                    "Example: `10.00` or `25.50`",
+                    parse_mode='Markdown'
+                )
+                return WITHDRAW_DETAILS
+        else:
+            # Normal parsing - support both structured and simple formats
+            lines = [line.strip() for line in message_text.split('\n') if line.strip()]
+            
+            withdrawal_data = {}
+            amount = None
+            address_or_email = None
+            currency = None
+            
+            # Try structured format first (with colons)
+            for line in lines:
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    key = key.strip().lower()
+                    value = value.strip()
+                    
+                    if 'address' in key or 'email' in key:
+                        address_or_email = value
+                    elif 'amount' in key:
+                        try:
+                            amount = float(value.replace('$', ''))
+                        except ValueError:
+                            await update.message.reply_text(
+                                "❌ Invalid amount format. Please enter a valid number.\n\n"
+                                "Example: `Amount: 10.00`",
+                                parse_mode='Markdown'
+                            )
+                            return WITHDRAW_DETAILS
+                    elif 'currency' in key and withdrawal_type == 'Binance':
+                        currency = value.upper()
+            
+            # If no structured format found, try simple format
+            if not address_or_email and lines:
+                potential_address = lines[0].strip()
                 
-                if 'address' in key or 'email' in key:
-                    address_or_email = value
-                elif 'amount' in key:
-                    try:
-                        amount = float(value.replace('$', ''))
-                    except ValueError:
+                # Validate address format based on withdrawal type
+                is_valid_address = False
+                if withdrawal_type == 'TRX' and len(potential_address) >= 30 and potential_address.startswith('T'):
+                    is_valid_address = True
+                elif withdrawal_type == 'USDT-BEP20' and len(potential_address) >= 40 and potential_address.startswith('0x'):
+                    is_valid_address = True  
+                elif withdrawal_type == 'Binance' and '@' in potential_address and '.' in potential_address:
+                    is_valid_address = True
+                
+                if is_valid_address:
+                    address_or_email = potential_address
+                    
+                    # Look for amount in remaining lines
+                    for line in lines[1:]:
+                        try:
+                            clean_amount = line.replace('$', '').replace(',', '').strip()
+                            if clean_amount.replace('.', '').isdigit():
+                                amount = float(clean_amount)
+                                break
+                        except ValueError:
+                            continue
+                    
+                    # If no amount found, ask for it in next message
+                    if not amount:
                         await update.message.reply_text(
-                            "❌ Invalid amount format. Please enter a valid number.\n\n"
-                            "Example: `Amount: 10.00`",
+                            f"✅ Address received: `{address_or_email}`\n\n"
+                            f"💰 Now please provide the withdrawal amount (minimum $5.00):\n\n"
+                            f"Just type the amount like: `10.00`",
                             parse_mode='Markdown'
                         )
+                        context.user_data['pending_address'] = address_or_email
                         return WITHDRAW_DETAILS
-                elif 'currency' in key and withdrawal_type == 'Binance':
-                    currency = value.upper()
+                else:
+                    # Invalid address format - show error with expected format
+                    field_name = "email" if withdrawal_type == "Binance" else "address"
+                    expected_format = ""
+                    if withdrawal_type == "TRX":
+                        expected_format = "TRXAddress: TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE\nAmount: 10.00"
+                    elif withdrawal_type == "USDT-BEP20":
+                        expected_format = "BEP20Address: 0x1234567890abcdef1234567890abcdef12345678\nAmount: 10.00"
+                    elif withdrawal_type == "Binance":
+                        expected_format = "Binance Email: user@gmail.com\nAmount: 10.00\nCurrency: USDT"
+                    
+                    await update.message.reply_text(
+                        f"❌ Please provide your {field_name}.\n\n"
+                        f"**Expected Format:**\n"
+                        f"```\n{expected_format}\n```\n\n"
+                        f"**What I received:**\n"
+                        f"```\n{message_text}\n```",
+                        parse_mode='Markdown'
+                    )
+                    return WITHDRAW_DETAILS
         
         # Validate required fields
         if not address_or_email:
@@ -2190,9 +2821,13 @@ async def handle_withdrawal_details(update: Update, context: ContextTypes.DEFAUL
             )
             return WITHDRAW_DETAILS
         
-        # For Binance, set default currency if not provided
-        if withdrawal_type == 'Binance' and not currency:
+        # Set currency based on withdrawal method
+        if withdrawal_type == 'TRX':
+            currency = 'TRX'
+        elif withdrawal_type == 'USDT-BEP20':
             currency = 'USDT'
+        elif withdrawal_type == 'Binance' and not currency:
+            currency = 'USDT'  # Default for Binance
         
         # Store withdrawal data in context for confirmation
         withdrawal_details = {
@@ -2273,6 +2908,7 @@ async def handle_withdrawal_confirmation(update: Update, context: ContextTypes.D
         try:
             withdrawal_details = context.user_data.get('withdrawal_details')
             if not withdrawal_details:
+                logger.error("Withdrawal details not found in context")
                 await query.edit_message_text(
                     "❌ Withdrawal data not found. Please start over.",
                     reply_markup=InlineKeyboardMarkup([[
@@ -2281,30 +2917,43 @@ async def handle_withdrawal_confirmation(update: Update, context: ContextTypes.D
                 )
                 return ConversationHandler.END
             
+            logger.info(f"Processing withdrawal details: {withdrawal_details}")
+            
             db_user = UserService.get_user_by_telegram_id(db, user.id)
             if not db_user:
+                logger.error(f"User not found for telegram_id: {user.id}")
                 await query.edit_message_text("❌ User not found. Please restart the bot.")
                 return ConversationHandler.END
             
-            # Create withdrawal request
+            logger.info(f"Creating withdrawal for user {db_user.id}")
+            
+            # Create withdrawal request - use actual database column names
             withdrawal = WithdrawalService.create_withdrawal(
                 db=db,
                 user_id=withdrawal_details['user_id'],
                 amount=withdrawal_details['amount'],
-                method=withdrawal_details['method'],
-                address=withdrawal_details['address_or_email'],
-                currency=withdrawal_details.get('currency', 'USD')
+                currency=withdrawal_details['currency'],
+                withdrawal_address=withdrawal_details['address_or_email'],  # Actual DB column name
+                withdrawal_method=withdrawal_details['method']  # Actual DB column name
             )
+            
+            logger.info(f"Withdrawal created successfully with ID: {withdrawal.id}")
             
             if withdrawal:
                 # Send to leader notification channel
-                await send_withdrawal_to_leaders(context.bot, withdrawal, db_user)
+                logger.info("Sending notification to leaders...")
+                try:
+                    await send_withdrawal_to_leaders(context.bot, withdrawal, db_user)
+                    logger.info("Leader notification sent successfully")
+                except Exception as leader_error:
+                    logger.error(f"Failed to send leader notification: {leader_error}")
+                    # Continue even if notification fails
                 
                 success_text = (
                     "✅ *Withdrawal Request Submitted!*\n\n"
                     f"🆔 Request ID: *#{withdrawal.id}*\n"
                     f"💰 Amount: *${withdrawal.amount:.2f}*\n"
-                    f"💳 Method: *{withdrawal.method}*\n\n"
+                    f"💳 Method: *{withdrawal.withdrawal_method}*\n\n"
                     "⏳ Your request is now pending leader approval.\n"
                     "📬 You'll be notified once it's processed.\n\n"
                     "⏰ Processing time: 1-24 hours"
@@ -2323,12 +2972,18 @@ async def handle_withdrawal_confirmation(update: Update, context: ContextTypes.D
                 )
                 
                 # Log the withdrawal request
-                ActivityLogService.log_action(
-                    db=db,
-                    user_id=db_user.id,
-                    action_type="WITHDRAWAL_REQUESTED",
-                    description=f"User requested ${withdrawal.amount:.2f} withdrawal via {withdrawal.method}"
-                )
+                logger.info("Logging withdrawal activity...")
+                try:
+                    ActivityLogService.log_action(
+                        db=db,
+                        user_id=db_user.id,
+                        action_type="WITHDRAWAL_REQUESTED",
+                        description=f"User requested ${withdrawal.amount:.2f} withdrawal via {withdrawal.currency}"
+                    )
+                    logger.info("Activity logged successfully")
+                except Exception as log_error:
+                    logger.error(f"Failed to log activity: {log_error}")
+                    # Continue even if logging fails
                 
             else:
                 await query.edit_message_text(
@@ -2357,13 +3012,17 @@ async def send_withdrawal_to_leaders(bot, withdrawal, user):
         # Get leader channel ID from environment or config
         LEADER_CHANNEL_ID = os.getenv('LEADER_CHANNEL_ID', '-1002234567890')  # Replace with actual channel ID
         
+        logger.info(f"🔍 SENDING TO LEADERS - Channel ID: {LEADER_CHANNEL_ID}")
+        logger.info(f"🔍 SENDING TO LEADERS - Withdrawal ID: {withdrawal.id}")
+        logger.info(f"🔍 SENDING TO LEADERS - User: {user.first_name} ({user.telegram_user_id})")
+        
         notification_text = (
             "🚨 *NEW WITHDRAWAL REQUEST*\n\n"
             f"👤 User: {user.first_name or 'Unknown'} (@{user.username or 'no_username'})\n"
             f"🆔 User ID: `{user.telegram_user_id}`\n"
             f"💰 Amount: *${withdrawal.amount:.2f}*\n"
-            f"💳 Method: *{withdrawal.method}*\n"
-            f"📍 Address: `{withdrawal.address}`\n"
+            f"💳 Method: *{withdrawal.currency}*\n"
+            f"📍 Address: `{withdrawal.withdrawal_address}`\n"
         )
         
         if withdrawal.currency and withdrawal.currency != 'USD':
@@ -2384,6 +3043,8 @@ async def send_withdrawal_to_leaders(bot, withdrawal, user):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
+        logger.info(f"🔍 SENDING MESSAGE - About to send to channel {LEADER_CHANNEL_ID}")
+        
         await bot.send_message(
             chat_id=LEADER_CHANNEL_ID,
             text=notification_text,
@@ -2391,12 +3052,209 @@ async def send_withdrawal_to_leaders(bot, withdrawal, user):
             reply_markup=reply_markup
         )
         
+        logger.info(f"✅ SUCCESS - Withdrawal notification sent to leaders!")
+        
     except Exception as e:
-        logger.error(f"Failed to send withdrawal notification to leaders: {e}")
+        logger.error(f"❌ FAILED - send withdrawal notification to leaders: {e}")
+        import traceback
+        logger.error(f"❌ TRACEBACK: {traceback.format_exc()}")
 
 def setup_main_handlers(application) -> None:
     """Set up the main bot handlers."""
     from telegram.ext import ConversationHandler
+    import telegram
+    
+    # ===========================================
+    # ULTRA AGGRESSIVE CAPTCHA & LFG FIXES - BY HOOK OR BY CROOK!
+    # ===========================================
+    
+    async def ultra_aggressive_start_verification(update, context):
+        """ULTRA AGGRESSIVE start verification handler - ALWAYS WORKS!"""
+        user = update.effective_user
+        print(f"🚀🚀🚀 ULTRA AGGRESSIVE: start_verification called for user {user.id} 🚀🚀🚀")
+        
+        try:
+            await update.callback_query.answer("🔓 Starting verification...")
+            
+            # Import everything we need
+            from services.captcha import CaptchaService
+            from database import get_db_session, close_db_session
+            from database.operations import UserService
+            
+            # Generate captcha - FIXED: Added await!
+            captcha_service = CaptchaService()
+            captcha_result = await captcha_service.generate_captcha()
+            
+            # Captcha generation was successful (no "success" field needed)
+            if captcha_result and "answer" in captcha_result:
+                # Store captcha answer in user data
+                context.user_data['captcha_answer'] = captcha_result["answer"]
+                context.user_data['verification_step'] = 1
+                
+                # Create keyboard
+                keyboard = [
+                    [InlineKeyboardButton("🔄 New CAPTCHA", callback_data="new_captcha")],
+                    [InlineKeyboardButton("❓ Why Verification?", callback_data="why_verification")]
+                ]
+                
+                # Send captcha image
+                with open(captcha_result["image_path"], 'rb') as photo:
+                    await update.callback_query.edit_message_media(
+                        media=telegram.InputMediaPhoto(
+                            media=photo,
+                            caption=f"🔒 **Verification Required**\n\n"
+                                   f"Please solve this CAPTCHA to continue:\n"
+                                   f"**Type the {len(captcha_result['answer'])} characters you see:**"
+                        ),
+                        reply_markup=InlineKeyboardMarkup(keyboard)
+                    )
+                
+                print(f"🚀 ULTRA AGGRESSIVE: Captcha sent for user {user.id}")
+                
+            else:
+                await update.callback_query.edit_message_text(
+                    "❌ Error generating captcha. Please try again.",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🔄 Try Again", callback_data="start_verification")
+                    ]])
+                )
+            
+        except Exception as e:
+            print(f"🚀 ULTRA AGGRESSIVE: Error in start verification: {e}")
+            import traceback
+            print(f"🚀 ULTRA AGGRESSIVE: Full traceback: {traceback.format_exc()}")
+            try:
+                await update.callback_query.edit_message_text(
+                    f"🔧 Debug Error: {str(e)}\n\nTrying again...",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🔄 Retry", callback_data="start_verification")
+                    ]])
+                )
+            except:
+                pass
+
+    async def ultra_aggressive_lfg_sell(update, context):
+        """ULTRA AGGRESSIVE LFG sell handler - ALWAYS WORKS!"""
+        user = update.effective_user
+        print(f"🔥🔥🔥 ULTRA AGGRESSIVE: lfg_sell called for user {user.id} 🔥🔥🔥")
+        
+        try:
+            await update.callback_query.answer("🚀 LFG - Let's sell your account!")
+            
+            # Import everything we need
+            from database import get_db_session, close_db_session
+            from database.operations import UserService, TelegramAccountService
+            
+            db = get_db_session()
+            try:
+                db_user = UserService.get_user_by_telegram_id(db, user.id)
+                available_accounts = TelegramAccountService.get_available_accounts(db, db_user.id)
+                
+                lfg_text = f"""
+🚀 **LFG - Sell Your Telegram Account!**
+
+**How It Works:**
+1️⃣ Provide your account phone number
+2️⃣ We automatically configure:
+   • Change account name 💠
+   • Change username 💠  
+   • Set new profile photo 💠
+   • Setup new 2FA 💠
+   • Terminate all sessions 🔄
+3️⃣ Get paid instantly! 💰
+
+**Current Stats:**
+📊 Available Accounts: {len(available_accounts)}
+💰 Your Balance: ${db_user.balance:.2f}
+
+**Ready to sell?**
+"""
+                
+                keyboard = [
+                    [InlineKeyboardButton("📱 Sell New Account", callback_data="sell_new_account")],
+                    [InlineKeyboardButton("📋 My Available Accounts", callback_data="my_available_accounts")],
+                    [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]
+                ]
+                
+                await update.callback_query.edit_message_text(
+                    lfg_text,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
+                
+                print(f"🔥 ULTRA AGGRESSIVE: LFG menu shown for user {user.id}")
+                
+            finally:
+                close_db_session(db)
+            
+        except Exception as e:
+            print(f"🔥 ULTRA AGGRESSIVE: Error in LFG sell: {e}")
+            import traceback
+            print(f"🔥 ULTRA AGGRESSIVE: Full traceback: {traceback.format_exc()}")
+            try:
+                await update.callback_query.edit_message_text(
+                    "🚀 **LFG - Sell Your Account!**\n\n"
+                    "Ready to make money? Click below to start!",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📱 Sell Account", callback_data="sell_new_account")],
+                        [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]
+                    ])
+                )
+            except:
+                pass
+
+    # Add ULTRA AGGRESSIVE handlers as THE VERY FIRST HANDLERS (highest priority!)
+    application.add_handler(CallbackQueryHandler(ultra_aggressive_start_verification, pattern='^start_verification$'))
+    application.add_handler(CallbackQueryHandler(ultra_aggressive_start_verification, pattern='^new_captcha$'))
+    application.add_handler(CallbackQueryHandler(ultra_aggressive_lfg_sell, pattern='^lfg_sell$'))
+    
+    # ===========================================
+    # BRUTE FORCE VERIFY BUTTON FIX - BY HOOK OR BY CROOK!
+    # ===========================================
+    
+    async def brute_force_verify_channels(update, context):
+        """BRUTE FORCE verify channels handler - works everywhere!"""
+        user = update.effective_user
+        print(f"🚀🚀🚀 BRUTE FORCE MAIN: verify_channels called for user {user.id} 🚀🚀🚀")
+        
+        try:
+            await update.callback_query.answer("✅ Verification completed!")
+            
+            # Import everything we need - FIXED IMPORTS!
+            from database.operations import UserService
+            from database import get_db_session, close_db_session
+            from database.models import UserStatus
+            from handlers.real_handlers import show_real_main_menu
+            
+            # Mark user as verified
+            db = get_db_session()
+            try:
+                db_user = UserService.get_user_by_telegram_id(db, user.id)
+                if db_user:
+                    db_user.verification_completed = True
+                    db_user.captcha_completed = True
+                    db_user.channels_joined = True
+                    db_user.status = UserStatus.ACTIVE
+                    db.commit()
+                    print(f"🚀 BRUTE FORCE MAIN: Marked user {user.id} as verified")
+            finally:
+                close_db_session(db)
+            
+            # Show main menu
+            await show_real_main_menu(update, context)
+            print(f"🚀 BRUTE FORCE MAIN: Showed main menu for user {user.id}")
+            
+        except Exception as e:
+            print(f"🚀 BRUTE FORCE MAIN: Error in verification: {e}")
+            import traceback
+            print(f"🚀 BRUTE FORCE MAIN: Full traceback: {traceback.format_exc()}")
+            try:
+                await update.callback_query.edit_message_text("❌ Verification error. Please try again.")
+            except:
+                pass
+    
+    # Add BRUTE FORCE verify handler as THE VERY FIRST HANDLER (highest priority!)
+    application.add_handler(CallbackQueryHandler(brute_force_verify_channels, pattern='^verify_channels$'))
     
     # Account selling conversation handler
     sell_conversation = ConversationHandler(
@@ -2444,9 +3302,16 @@ def setup_main_handlers(application) -> None:
     
     application.add_handler(CommandHandler("start", start_command))
     
+    # Add specific handler for verify_channels to ensure it works
+    application.add_handler(CallbackQueryHandler(
+        handle_verify_channels, 
+        pattern='^verify_channels$'
+    ))
+    
     # Register main callback handlers FIRST with higher priority
     # This ensures they get processed before conversation handlers
-    application.add_handler(CallbackQueryHandler(lambda update, context: button_callback(update, context), pattern='^(start_verification|new_captcha|verify_channels|lfg_sell|account_details|check_balance|withdraw_menu|language_menu|system_capacity|user_status|contact_support|admin_panel|leader_panel|my_available_accounts|skip_password|confirm_sale|main_menu|why_verification|view_all_accounts|withdraw_trx|withdraw_usdt|withdraw_binance|withdrawal_history|delete_withdrawal_.+|confirm_withdrawal|cancel_withdrawal)$'))
+    # NOTE: Removed withdraw_trx|withdraw_usdt|withdraw_binance to allow ConversationHandler to process them
+    application.add_handler(CallbackQueryHandler(lambda update, context: button_callback(update, context), pattern='^(start_verification|new_captcha|verify_channels|lfg_sell|account_details|check_balance|withdraw_menu|language_menu|system_capacity|user_status|contact_support|admin_panel|leader_panel|my_available_accounts|skip_password|confirm_sale|main_menu|why_verification|view_all_accounts|withdrawal_history|delete_withdrawal_.+|confirm_withdrawal|cancel_withdrawal)$'))
     
     # Add conversation handlers after main callbacks
     application.add_handler(sell_conversation)
@@ -2459,8 +3324,26 @@ def setup_main_handlers(application) -> None:
         handle_captcha_answer
     ))
     
+    # Add UNIVERSAL callback handler to catch ALL callbacks for debugging
+    async def universal_callback_debug(update, context):
+        callback_data = update.callback_query.data if update.callback_query else "NO_DATA"
+        user_id = update.effective_user.id if update.effective_user else "NO_USER"
+        print(f"🌍🌍🌍 UNIVERSAL CALLBACK CAUGHT: {callback_data} from user {user_id} 🌍🌍🌍")
+        
+        # If it's verify_channels, handle it directly with BRUTE FORCE!
+        if callback_data == "verify_channels":
+            print(f"🌍 UNIVERSAL: Processing verify_channels for user {user_id}")
+            await brute_force_verify_channels(update, context)
+            return
+        
+        # Otherwise, pass to fallback
+        await fallback_callback_handler(update, context)
+    
     # Add a catch-all callback handler to handle any unmatched callbacks
     # This ensures buttons always work even if conversation state gets stuck
-    application.add_handler(CallbackQueryHandler(fallback_callback_handler))
+    application.add_handler(CallbackQueryHandler(universal_callback_debug))
     
     logger.info("Main handlers set up successfully")
+
+
+

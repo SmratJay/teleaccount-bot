@@ -4,53 +4,101 @@ Advanced Captcha and Verification Service for the Telegram Account Selling Bot.
 import random
 import string
 import logging
-from typing import Dict, Any, List
-import json
 import os
 import io
+from typing import Dict, Any, List
+import json
 from captcha.image import ImageCaptcha
-from PIL import Image
+from captcha.audio import AudioCaptcha
+from PIL import Image, ImageDraw, ImageFont
+from utils.runtime_settings import (
+    DEFAULT_VERIFICATION_CHANNELS,
+    get_verification_channels,
+)
 
 logger = logging.getLogger(__name__)
 
 class CaptchaService:
-    """Service for generating and managing CAPTCHA challenges."""
+    """Service for generating and managing CAPTCHA challenges with visual and text options."""
     
     def __init__(self):
-        self.math_questions = [
-            {"question": "What is 15 + 27?", "answer": "42"},
-            {"question": "What is 8 × 7?", "answer": "56"},
-            {"question": "What is 100 - 23?", "answer": "77"},
-            {"question": "What is 144 ÷ 12?", "answer": "12"},
-            {"question": "What is 25 + 18?", "answer": "43"},
-            {"question": "What is 9 × 6?", "answer": "54"},
-            {"question": "What is 85 - 31?", "answer": "54"},
-            {"question": "What is 72 ÷ 8?", "answer": "9"}
-        ]
+        # Create captcha directory if not exists
+        self.captcha_dir = "temp_captchas"
+        os.makedirs(self.captcha_dir, exist_ok=True)
         
-        self.text_questions = [
-            {"question": "Type the word 'TELEGRAM' in uppercase:", "answer": "TELEGRAM"},
-            {"question": "What comes after 'A, B, C'?", "answer": "D"},
-            {"question": "Type 'BOT' backwards:", "answer": "TOB"},
-            {"question": "What is the first letter of 'VERIFICATION'?", "answer": "V"},
-            {"question": "Type 'HUMAN' in lowercase:", "answer": "human"}
-        ]
+        # Initialize image captcha generator
+        self.image_captcha = ImageCaptcha(width=280, height=90, fonts=['arial.ttf', 'calibri.ttf'])
+        
+        # Removed math_questions and text_questions - only using visual captchas now
     
-    async def generate_captcha(self) -> Dict[str, str]:
-        """Generate a random CAPTCHA challenge."""
+    async def generate_captcha(self) -> Dict[str, Any]:
+        """Generate only visual image CAPTCHA challenges."""
         try:
-            captcha_type = random.choice(['math', 'text'])
+            # Only generate visual captchas - no text or math questions
+            return await self.generate_visual_captcha()
             
-            if captcha_type == 'math':
-                challenge = random.choice(self.math_questions)
-            else:
-                challenge = random.choice(self.text_questions)
+        except Exception as e:
+            logger.error(f"Error generating visual captcha: {e}")
+            # Fallback to another visual captcha attempt
+            try:
+                return await self.generate_visual_captcha()
+            except Exception as fallback_error:
+                logger.error(f"Fallback captcha generation failed: {fallback_error}")
+                # Final fallback - simple visual captcha
+                captcha_text = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+                return {
+                    "type": "visual",
+                    "question": "Enter the text shown in the image:",
+                    "answer": captcha_text.lower(),
+                    "image_path": None,  # Will handle image generation in handler
+                    "captcha_text": captcha_text
+                }
+
+    async def generate_visual_captcha(self) -> Dict[str, Any]:
+        """Generate a visual image captcha."""
+        try:
+            # Generate random text for captcha
+            captcha_text = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
+            
+            # Generate captcha image
+            image = self.image_captcha.generate(captcha_text)
+            
+            # Save image to temporary file
+            image_filename = f"captcha_{random.randint(10000, 99999)}.png"
+            image_path = os.path.join(self.captcha_dir, image_filename)
+            
+            # Write image to file
+            with open(image_path, 'wb') as f:
+                f.write(image.getvalue())
             
             return {
-                "type": captcha_type,
-                "question": challenge["question"],
-                "answer": challenge["answer"].lower().strip()
+                "type": "visual",
+                "question": f"Enter the text shown in the image:",
+                "answer": captcha_text.lower(),
+                "image_path": image_path,
+                "captcha_text": captcha_text
             }
+            
+        except Exception as e:
+            logger.error(f"Error generating visual captcha: {e}")
+            # Fallback to simple visual captcha without image file
+            captcha_text = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+            return {
+                "type": "visual",
+                "question": "Enter the text shown in the image:",
+                "answer": captcha_text.lower(),
+                "image_path": None,
+                "captcha_text": captcha_text
+            }
+
+    def cleanup_captcha_image(self, image_path: str) -> None:
+        """Clean up temporary captcha image file."""
+        try:
+            if image_path and os.path.exists(image_path):
+                os.remove(image_path)
+                logger.info(f"Cleaned up captcha image: {image_path}")
+        except Exception as e:
+            logger.error(f"Error cleaning up captcha image {image_path}: {e}")
             
         except Exception as e:
             logger.error(f"Error generating CAPTCHA: {e}")
@@ -69,97 +117,12 @@ class CaptchaService:
             logger.error(f"Error verifying CAPTCHA: {e}")
             return False
 
-
-class ImageCaptchaService:
-    """Service for generating image-based CAPTCHA challenges."""
-    
-    def __init__(self):
-        self.image_captcha = ImageCaptcha(width=280, height=90, fonts=None)
-        self.captcha_dir = "captcha_images"
-        if not os.path.exists(self.captcha_dir):
-            os.makedirs(self.captcha_dir)
-    
-    def generate_captcha_text(self, length: int = 6) -> str:
-        """Generate random text for CAPTCHA (numbers and letters)."""
-        characters = string.ascii_uppercase + string.digits
-        excluded = ['0', 'O', '1', 'I', 'l']
-        characters = ''.join(char for char in characters if char not in excluded)
-        return ''.join(random.choice(characters) for _ in range(length))
-    
-    async def generate_image_captcha(self) -> Dict[str, Any]:
-        """
-        Generate an image-based CAPTCHA.
-        Returns: dict with 'image_bytes', 'answer', and 'filepath'
-        """
-        try:
-            captcha_text = self.generate_captcha_text()
-            
-            data = self.image_captcha.generate(captcha_text)
-            
-            image_bytes = io.BytesIO()
-            image_bytes.write(data.getvalue())
-            image_bytes.seek(0)
-            
-            filepath = os.path.join(self.captcha_dir, f"captcha_{random.randint(1000, 9999)}.png")
-            with open(filepath, 'wb') as f:
-                f.write(image_bytes.getvalue())
-            
-            image_bytes.seek(0)
-            
-            return {
-                "type": "image",
-                "image_bytes": image_bytes,
-                "answer": captcha_text,
-                "filepath": filepath,
-                "question": "Please type the characters you see in the image above (case-insensitive):"
-            }
-            
-        except Exception as e:
-            logger.error(f"Error generating image CAPTCHA: {e}")
-            return None
-    
-    def verify_image_captcha(self, user_answer: str, correct_answer: str) -> bool:
-        """Verify if the user's answer matches the image CAPTCHA."""
-        try:
-            return user_answer.upper().strip() == correct_answer.upper().strip()
-        except Exception as e:
-            logger.error(f"Error verifying image CAPTCHA: {e}")
-            return False
-    
-    def cleanup_captcha_image(self, filepath: str) -> None:
-        """Delete the captcha image after verification."""
-        try:
-            if os.path.exists(filepath):
-                os.remove(filepath)
-                logger.info(f"Cleaned up CAPTCHA image: {filepath}")
-        except Exception as e:
-            logger.error(f"Error cleaning up CAPTCHA image: {e}")
-
-
 class VerificationTaskService:
     """Service for managing verification tasks like channel joins."""
     
     def __init__(self):
-        self.required_channels = [
-            {
-                "name": "📢 Bot Updates",
-                "username": "telegram_account_bot_updates", 
-                "description": "Get the latest bot updates and announcements",
-                "link": "https://t.me/telegram_account_bot_updates"
-            },
-            {
-                "name": "💰 Selling Community", 
-                "username": "telegram_selling_community",
-                "description": "Join our community of account sellers",
-                "link": "https://t.me/telegram_selling_community"
-            },
-            {
-                "name": "🆘 Support Channel",
-                "username": "telegram_bot_support_channel", 
-                "description": "Get help and support from our team",
-                "link": "https://t.me/telegram_bot_support_channel"
-            }
-        ]
+        channels = get_verification_channels()
+        self.required_channels = channels if channels else DEFAULT_VERIFICATION_CHANNELS
         
         self.custom_tasks = [
             {

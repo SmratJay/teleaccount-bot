@@ -21,7 +21,7 @@ find_channel_id.py
 get_channel_id.py
 get_bot_info.py
 diagnose_otp.py
-test_*.py
+# test_*.py  # Commented out to allow tests directory
 session_diagnostic.py
 test_withdrawal_config.py
 
@@ -199,14 +199,7 @@ cython_debug/
 # Project specific
 sessions/
 logs/
-captcha_images/
 *.session
 *.session-journal
 proxy_list.txt
 config.json
-
-# Keep preset profile photos in repo but not user-uploaded ones
-!preset_profile_photos/
-preset_profile_photos/*.jpg
-preset_profile_photos/*.png
-preset_profile_photos/*.jpeg

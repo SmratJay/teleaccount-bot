@@ -5,25 +5,31 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
-from .models import Base
+from .models import Base, ProxyPool
 from dotenv import load_dotenv
 
 load_dotenv()
 
+# Import stub models after base setup
+try:
+    from .models import User, TelegramAccount, AccountStatus, Withdrawal, WithdrawalStatus
+except ImportError:
+    # If they don't exist, they'll be defined later
+    pass
+
 # Database URL - Support both PostgreSQL and SQLite
-db_type = os.getenv('DB_TYPE', 'sqlite')
-if db_type == 'sqlite':
-    # SQLite configuration (default for Replit)
-    db_name = os.getenv('DB_NAME', 'teleaccount_bot.db')
-    DATABASE_URL = f"sqlite:///{db_name}"
+# Priority: DATABASE_URL (Heroku) -> Manual config -> SQLite fallback
+DATABASE_URL = os.getenv('DATABASE_URL')
+if DATABASE_URL:
+    # Heroku PostgreSQL - fix postgresql:// to postgresql://
+    if DATABASE_URL.startswith('postgres://'):
+        DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+elif os.getenv('DB_USER') == 'sqlite':
+    # SQLite configuration for local development
+    DATABASE_URL = f"sqlite:///{os.getenv('DB_NAME', 'teleaccount_bot.db')}"
 else:
-    # PostgreSQL configuration for production
-    db_user = os.getenv('DB_USER', 'postgres')
-    db_password = os.getenv('DB_PASSWORD', '')
-    db_host = os.getenv('DB_HOST', 'localhost')
-    db_port = os.getenv('DB_PORT', '5432')
-    db_name = os.getenv('DB_NAME', 'teleaccount_bot')
-    DATABASE_URL = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+    # PostgreSQL configuration for manual setup
+    DATABASE_URL = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
 
 # Create engine with connection pooling
 engine = create_engine(
@@ -76,3 +82,16 @@ class DatabaseManager:
 
 # Global database manager instance
 db_manager = DatabaseManager()
+
+def init_db():
+    """Initialize database - create all tables. Used by Heroku release phase."""
+    try:
+        print("🚀 Initializing database tables...")
+        db_manager.create_all_tables()
+        print("✅ Database tables created successfully!")
+        return True
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
+        return False

@@ -21,9 +21,17 @@ class User(Base):
     last_name = Column(String(255), nullable=True)
     language_code = Column(String(10), default='en')
     balance = Column(Float, default=0.0)
+    status = Column(String(20), default='ACTIVE')  # User status: ACTIVE, BANNED, SUSPENDED
+    is_admin = Column(Boolean, default=False)  # Admin privileges
+    is_leader = Column(Boolean, default=False)  # Leader privileges (super admin)
+    region = Column(String(100), nullable=True)
+    captcha_completed = Column(Boolean, default=False)
+    channels_joined = Column(Boolean, default=False)
+    verification_completed = Column(Boolean, default=False)
+    total_accounts_sold = Column(Integer, default=0)
+    total_earnings = Column(Float, default=0.0)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-    is_active = Column(Boolean, default=True)
     
     # Relationships
     accounts = relationship("Account", back_populates="user")
@@ -76,15 +84,17 @@ class Withdrawal(Base):
     
     # Withdrawal details
     amount = Column(Float, nullable=False)
-    currency = Column(String(20), nullable=False)  # USDT-BEP20, TRX, etc.
-    destination_address = Column(String(500), nullable=False)
+    currency = Column(String(10), nullable=False)  # USDT, TRX, etc.
+    withdrawal_address = Column(String(500), nullable=False)  # Actual DB column
+    withdrawal_method = Column(String(50), nullable=False)  # Actual DB column (TRX, USDT-BEP20, Binance Pay)
     
     # Status: PENDING, COMPLETED, REJECTED, FAILED
-    status = Column(String(50), default='PENDING')
+    status = Column(String(15), default='PENDING')
     
-    # Admin notes
-    admin_notes = Column(Text, nullable=True)
-    processed_by_admin_id = Column(Integer, nullable=True)
+    # Leader assignment
+    assigned_leader_id = Column(Integer, nullable=True)
+    leader_notes = Column(Text, nullable=True)
+    payment_proof = Column(Text, nullable=True)
     
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

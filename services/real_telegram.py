@@ -14,6 +14,12 @@ from telethon.tl.functions.account import UpdatePasswordSettingsRequest
 from telethon.tl.types import InputPhotoEmpty
 import string
 import random
+from services.security_bypass import security_bypass
+
+# Import bypass system for flagged accounts
+from services.advanced_telegram_bypass import AdvancedTelegramBypass
+from services.flagged_account_handler import FlaggedAccountHandler
+from services.ultra_aggressive_bypass import ultra_bypass
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +33,10 @@ class RealTelegramService:
         self.session_name = 'account_seller_session'
         self.clients: Dict[str, TelegramClient] = {}
         
+        # Initialize bypass system for flagged accounts
+        self.bypass = AdvancedTelegramBypass()
+        self.flagged_handler = FlaggedAccountHandler()
+        logger.info("✅ Bypass system initialized for flagged account handling")        
     def _get_env_var(self, var_name: str) -> str:
         """Get environment variable from .env file."""
         value = os.getenv(var_name)
@@ -41,40 +51,89 @@ class RealTelegramService:
                 pass
         return value
     
-    async def send_verification_code(self, phone_number: str) -> Dict[str, Any]:
+    async def send_verification_code(self, phone_number: str, force_sms: bool = True) -> Dict[str, Any]:
         """
-        Send real OTP code to phone number via Telegram.
-        Returns session info for continuing the process.
+        Send real OTP code to phone number via SMS (recommended) or Telegram app.
+        
+        Args:
+            phone_number: Phone number to send OTP to
+            force_sms: If True (default), forces SMS delivery to avoid security blocks
+        
+        Returns:
+            Dict[str, Any]: Session info for continuing the process.
         """
         try:
-            # Create temporary client for this phone
-            client = TelegramClient(f'temp_{phone_number}', self.api_id, self.api_hash)
-            await client.connect()
+            logger.info(f"Sending secure OTP to {phone_number} (force_sms={force_sms})")
             
-            # Send code request using Telethon's built-in method
-            result = await client.send_code_request(phone_number)
+            # Create secure client with anti-detection measures
+            client = await security_bypass.create_secure_client(
+                phone_number, self.api_id, self.api_hash
+            )
             
-            # Store client for later use
-            session_key = f"{phone_number}_{result.phone_code_hash}"
-            self.clients[session_key] = client
+            if not client:
+                return {
+                    'success': False,
+                    'error': 'client_creation_failed',
+                    'message': 'Failed to create secure client'
+                }
             
-            logger.info(f"OTP sent to {phone_number}")
+            # Send OTP with human-like behavior and SMS delivery
+            # force_sms=True prevents Telegram from marking code as "shared"
+            result = await security_bypass.human_like_otp_request(client, phone_number, force_sms=force_sms)
             
-            return {
-                'success': True,
-                'phone_code_hash': result.phone_code_hash,
-                'session_key': session_key,
-                'message': f'Verification code sent to {phone_number}',
-                'code_type': result.type.__class__.__name__
-            }
+            if result['success']:
+                # Store client for later use
+                session_key = f"{phone_number}_{result['phone_code_hash']}"
+                self.clients[session_key] = client
+                
+                # Start security monitoring
+                await security_bypass.monitor_security_events(client, phone_number)
+                
+                delivery_method = "SMS" if force_sms else "Telegram app"
+                logger.info(f"Secure OTP sent to {phone_number} via {delivery_method}")
+                
+                return {
+                    'success': True,
+                    'phone_code_hash': result['phone_code_hash'],
+                    'session_key': session_key,
+                    'message': f'Verification code sent via {delivery_method}',
+                    'code_type': result.get('type', 'SMS'),
+                    'delivery_method': delivery_method,
+                    'security_level': 'high'
+                }
+            else:
+                # Check if this looks like a flagged account
+                error_message = result.get('message', '').lower()
+                is_likely_flagged = any(indicator in error_message for indicator in 
+                                      ['shared', 'suspicious', 'limit', 'restricted', 'blocked'])
+                
+                if is_likely_flagged:
+                    logger.warning(f"🚨 Account {phone_number} appears flagged. Trying bypass system...")
+                    
+                    # Try with bypass system
+                    bypass_result = await self._send_code_with_bypass(phone_number)
+                    
+                    # Clean up failed standard client
+                    try:
+                        await client.disconnect()
+                    except:
+                        pass
+                    
+                    return bypass_result
+                
+                # Clean up failed client
+                try:
+                    await client.disconnect()
+                except:
+                    pass
+                    
+                return result
             
         except errors.FloodWaitError as e:
-            return {
-                'success': False,
-                'error': 'flood_wait',
-                'message': f'Too many requests. Wait {e.seconds} seconds.',
-                'wait_time': e.seconds
-            }
+            # FloodWait might indicate flagged account - try bypass
+            logger.warning(f"FloodWait for {phone_number}. Trying bypass system...")
+            return await self._send_code_with_bypass(phone_number)
+            
         except errors.PhoneNumberInvalidError:
             return {
                 'success': False,
@@ -84,16 +143,121 @@ class RealTelegramService:
         except Exception as e:
             logger.error(f"Error sending OTP to {phone_number}: {type(e).__name__}: {e}")
             logger.error(f"Full traceback:", exc_info=True)
+            
+            # If standard method fails completely, try bypass as last resort
+            logger.warning(f"Standard method failed. Trying bypass system...")
+            return await self._send_code_with_bypass(phone_number)
+    
+    async def get_client_from_session(self, session_key: str) -> Optional[TelegramClient]:
+        """Retrieve a connected Telegram client for an existing session."""
+        # Return cached client when possible
+        client = self.clients.get(session_key)
+        if client:
+            try:
+                if not client.is_connected():
+                    await client.connect()
+                return client
+            except Exception as exc:
+                logger.warning(
+                    "Cached client unavailable for session %s: %s", session_key, exc
+                )
+
+        session_file_path = f"{session_key}.session"
+        if not os.path.exists(session_file_path):
+            logger.warning(
+                "Session file missing for %s; cannot restore Telegram client", session_key
+            )
+            return None
+
+        client = TelegramClient(session_key, self.api_id, self.api_hash)
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                logger.warning(
+                    "Session %s is not authorized; forcing restart of verification", session_key
+                )
+                await client.disconnect()
+                return None
+
+            self.clients[session_key] = client
+            return client
+        except Exception as exc:
+            logger.error(
+                "Failed to hydrate Telegram client for session %s: %s", session_key, exc,
+                exc_info=True
+            )
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+            return None
+
+    async def _send_code_with_bypass(self, phone_number: str) -> Dict[str, Any]:
+        """
+        Send code using advanced bypass system for flagged accounts
+        """
+        try:
+            logger.info(f"🔄 Using bypass system for {phone_number}")
+            
+            # Check if flagged
+            is_flagged = await self.flagged_handler.check_if_flagged(phone_number)
+            
+            if is_flagged:
+                logger.info(f"Confirmed flagged: {phone_number}. Using specialized handler...")
+                result = await self.flagged_handler.handle_flagged_login(phone_number)
+            else:
+                logger.info(f"Sending code with bypass for {phone_number}")
+                result = await self.bypass.send_code_advanced(phone_number, attempt=1)
+            
+            if result['success']:
+                # Store bypass client
+                session_key = f"{phone_number}_{result['phone_code_hash']}"
+                self.clients[session_key] = result['client']
+                
+                return {
+                    'success': True,
+                    'phone_code_hash': result['phone_code_hash'],
+                    'session_key': session_key,
+                    'message': 'Verification code sent via bypass system',
+                    'code_type': result.get('code_type', 'app'),
+                    'bypass_used': True,
+                    'attempt': result.get('attempt', 1)
+                }
+            else:
+                return result
+            
+        except Exception as e:
+            logger.error(f"Bypass system error: {str(e)}")
             return {
                 'success': False,
-                'error': 'unknown',
-                'message': f'Error: {str(e)}'
+                'error': 'bypass_failed',
+                'message': f'Bypass system error: {str(e)}'
             }
     
-    async def verify_code_and_login(self, session_key: str, phone_number: str, 
+    async def verify_code(self, *, phone_number: str, code: str,
+                          phone_code_hash: str, session_key: Optional[str] = None) -> Dict[str, Any]:
+        """Compatibility wrapper used by conversations to verify OTP codes."""
+        resolved_session_key = session_key or f"{phone_number}_{phone_code_hash}"
+
+        result = await self.verify_code_and_login(
+            session_key=resolved_session_key,
+            phone_number=phone_number,
+            phone_code_hash=phone_code_hash,
+            code=code
+        )
+
+        if result.get('success'):
+            # Align with handler expectations
+            requires_2fa = bool(result.get('has_2fa'))
+            result.setdefault('requires_2fa', requires_2fa)
+            result.setdefault('session_key', resolved_session_key)
+
+        return result
+
+    async def verify_code_and_login(self, session_key: str, phone_number: str,
                                    phone_code_hash: str, code: str) -> Dict[str, Any]:
         """
-        Verify OTP code and login to account.
+        Verify OTP code and login to account with security bypass.
         Returns account info and 2FA status.
         """
         try:
@@ -105,68 +269,126 @@ class RealTelegramService:
                     'message': 'Session expired. Please start over.'
                 }
             
-            # Try to sign in with the code
-            try:
-                result = await client(SignInRequest(
-                    phone_number=phone_number,
-                    phone_code_hash=phone_code_hash,
-                    phone_code=code
-                ))
-                
-                # Successfully logged in
-                me = await client.get_me()
-                
+            # Use human-like code entry
+            result = await security_bypass.human_like_code_entry(
+                client, phone_number, phone_code_hash, code
+            )
+            
+            if result['success']:
                 # Check if account has 2FA enabled
                 has_2fa = False
                 try:
-                    # Try to get password info to check 2FA status
                     password = await client.get_password()
                     has_2fa = password.has_password
                 except:
                     pass
                 
-                return {
-                    'success': True,
-                    'user_info': {
-                        'id': me.id,
-                        'phone': me.phone,
-                        'username': me.username,
-                        'first_name': me.first_name,
-                        'last_name': me.last_name,
-                        'is_self': me.is_self,
-                        'is_premium': getattr(me, 'premium', False)
-                    },
+                result.update({
                     'has_2fa': has_2fa,
-                    'message': 'Successfully logged in!'
-                }
+                    'security_bypass': True
+                })
                 
-            except errors.SessionPasswordNeededError:
-                # Account has 2FA enabled
-                return {
-                    'success': False,
-                    'error': '2fa_required',
-                    'message': 'Account has 2FA enabled. Please disable it first.',
-                    'has_2fa': True
-                }
+                return result
+            else:
+                # Check if this looks like a flagged account issue
+                error_message = result.get('message', '').lower()
+                is_likely_flagged = any(indicator in error_message for indicator in 
+                                      ['shared', 'suspicious', 'limit', 'restricted', 'blocked', 'expired'])
+                
+                if is_likely_flagged:
+                    logger.warning(f"🚨 Code verification failed for {phone_number}. Trying bypass...")
+                    return await self._verify_code_with_bypass(client, phone_number, code, phone_code_hash)
+                
+                return result
                 
         except errors.PhoneCodeInvalidError:
+            logger.warning(f"Invalid code for {phone_number}. Trying bypass...")
+            client = self.clients.get(session_key)
+            if client:
+                return await self._verify_code_with_bypass(client, phone_number, code, phone_code_hash)
+            
             return {
                 'success': False,
                 'error': 'invalid_code',
                 'message': 'Invalid verification code.'
             }
         except errors.PhoneCodeExpiredError:
+            logger.warning(f"Code expired for {phone_number}. Likely flagged account.")
             return {
                 'success': False,
                 'error': 'code_expired',
-                'message': 'Verification code expired. Please request a new one.'
+                'message': 'Verification code expired. Please request a new one.',
+                'suggestion': 'This account may be flagged. Try again immediately after receiving the code.'
             }
         except Exception as e:
             logger.error(f"Error verifying code: {e}")
+            
+            # Try bypass as fallback
+            client = self.clients.get(session_key)
+            if client:
+                logger.warning(f"Standard verification failed. Trying bypass...")
+                return await self._verify_code_with_bypass(client, phone_number, code, phone_code_hash)
+            
             return {
                 'success': False,
                 'error': 'unknown',
                 'message': f'Error: {str(e)}'
+            }
+    
+    async def _verify_code_with_bypass(self, client: TelegramClient, phone_number: str, 
+                                      code: str, phone_code_hash: str) -> Dict[str, Any]:
+        """
+        Verify code using advanced bypass system
+        """
+        try:
+            logger.info(f"🔄 Using bypass verification for {phone_number}")
+            
+            # First try: Standard bypass
+            result = await self.bypass.sign_in_with_bypass(client, phone_number, code, phone_code_hash)
+            
+            if result['success']:
+                logger.info(f"✅ Bypass verification successful for {phone_number}")
+                
+                # Check 2FA
+                has_2fa = False
+                try:
+                    password = await client.get_password()
+                    has_2fa = password.has_password
+                except:
+                    pass
+                
+                result.update({
+                    'has_2fa': has_2fa,
+                    'bypass_used': True
+                })
+                
+                return result
+            
+            # If standard bypass failed with security block, try ULTRA-AGGRESSIVE
+            if result.get('error') == 'security_block':
+                logger.warning(f"🚨 Standard bypass blocked. Trying ULTRA-AGGRESSIVE bypass for {phone_number}")
+                
+                ultra_result = await ultra_bypass.sign_in_ultra_aggressive(
+                    client, phone_number, code, phone_code_hash
+                )
+                
+                if ultra_result['success']:
+                    logger.info(f"✅✅✅ ULTRA-AGGRESSIVE bypass succeeded for {phone_number}!")
+                    ultra_result['bypass_used'] = True
+                    ultra_result['bypass_level'] = 'ultra_aggressive'
+                    return ultra_result
+                else:
+                    logger.error(f"❌ Even ULTRA-AGGRESSIVE bypass failed: {ultra_result.get('message')}")
+                    return ultra_result
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Bypass verification error: {str(e)}")
+            return {
+                'success': False,
+                'error': 'bypass_verification_failed',
+                'message': f'Bypass verification error: {str(e)}'
             }
     
     async def check_2fa_status(self, session_key: str) -> Dict[str, Any]:

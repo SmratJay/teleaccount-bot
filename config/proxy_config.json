@@ -1,0 +1,115 @@
+{
+  "description": "Proxy configuration rules for different operation types",
+  "operation_rules": {
+    "account_creation": {
+      "proxy_types": ["residential", "datacenter"],
+      "min_reputation": 80,
+      "strategy": "BEST_REPUTATION",
+      "country_match": true,
+      "notes": "Account creation requires highest quality proxies to avoid bans"
+    },
+    "login": {
+      "proxy_types": ["residential", "datacenter"],
+      "min_reputation": 70,
+      "strategy": "WEIGHTED_RANDOM",
+      "country_match": true,
+      "notes": "Login should match country for consistency"
+    },
+    "otp_retrieval": {
+      "proxy_types": ["residential", "datacenter"],
+      "min_reputation": 70,
+      "strategy": "WEIGHTED_RANDOM",
+      "country_match": false,
+      "notes": "OTP retrieval needs reliable proxies but country doesn't matter"
+    },
+    "message_send": {
+      "proxy_types": ["datacenter", "free"],
+      "min_reputation": 50,
+      "strategy": "LEAST_RECENTLY_USED",
+      "country_match": false,
+      "notes": "Bulk messaging can use datacenter proxies with load distribution"
+    },
+    "verification": {
+      "proxy_types": ["datacenter", "residential"],
+      "min_reputation": 60,
+      "strategy": "WEIGHTED_RANDOM",
+      "country_match": true,
+      "notes": "Verification benefits from country matching"
+    },
+    "bulk_operation": {
+      "proxy_types": ["datacenter", "free"],
+      "min_reputation": 40,
+      "strategy": "LEAST_RECENTLY_USED",
+      "country_match": false,
+      "notes": "Bulk operations prioritize distribution over quality"
+    },
+    "testing": {
+      "proxy_types": ["free", "datacenter"],
+      "min_reputation": 20,
+      "strategy": "RANDOM",
+      "country_match": false,
+      "notes": "Testing can use any available proxy"
+    },
+    "general": {
+      "proxy_types": ["datacenter", "free"],
+      "min_reputation": 50,
+      "strategy": "WEIGHTED_RANDOM",
+      "country_match": false,
+      "notes": "Default fallback for unspecified operations"
+    }
+  },
+  "load_balancing_strategies": {
+    "description": "Available strategies for proxy selection",
+    "strategies": {
+      "BEST_REPUTATION": "Always selects the highest-rated proxy",
+      "WEIGHTED_RANDOM": "Random selection weighted by reputation score",
+      "FASTEST_RESPONSE": "Selects proxy with lowest average response time",
+      "LEAST_RECENTLY_USED": "Distributes load evenly across proxies",
+      "ROUND_ROBIN": "Cycles through proxies in order",
+      "RANDOM": "Completely random selection"
+    }
+  },
+  "proxy_types": {
+    "description": "Types of proxies available in the system",
+    "types": {
+      "residential": {
+        "description": "Real residential IPs from ISPs",
+        "success_rate": "95-98%",
+        "cost": "High",
+        "best_for": ["account_creation", "login", "verification"]
+      },
+      "datacenter": {
+        "description": "Server-based proxies from datacenters",
+        "success_rate": "70-85%",
+        "cost": "Low",
+        "best_for": ["message_send", "bulk_operation", "general"]
+      },
+      "mobile": {
+        "description": "Mobile network IPs",
+        "success_rate": "98-99%",
+        "cost": "Very High",
+        "best_for": ["account_creation", "high_security_operations"]
+      },
+      "free": {
+        "description": "Free public proxies",
+        "success_rate": "10-30%",
+        "cost": "Free",
+        "best_for": ["testing", "low_priority_operations"]
+      }
+    }
+  },
+  "thresholds": {
+    "min_reputation_critical": 80,
+    "min_reputation_important": 70,
+    "min_reputation_normal": 50,
+    "min_reputation_low": 40,
+    "min_reputation_testing": 20,
+    "max_consecutive_failures": 3,
+    "health_check_interval_seconds": 300
+  },
+  "fallback_behavior": {
+    "no_proxy_available": "Use next best proxy type",
+    "all_proxies_failed": "Retry with relaxed criteria (-10 reputation)",
+    "critical_operation_no_proxy": "Abort operation and log error"
+  }
+}
