@@ -10,30 +10,33 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
-**October 21, 2025 - Railway Deployment Preparation:**
-- **Created complete Railway deployment configuration:**
-  - Procfile: `worker: python real_main.py` (polling mode, not HTTP)
-  - runtime.txt: Specifies Python 3.11.9
-  - requirements.txt: All 48 dependencies verified and documented
-  - .railwayignore: Excludes dev files, tests, docs, sessions, logs from deployment
-  - RAILWAY_DEPLOYMENT.md: Complete step-by-step deployment guide with security best practices
+**October 21, 2025 - AWS EC2 Deployment Configuration:**
+- **Created complete AWS EC2 deployment setup:**
+  - AWS_DEPLOYMENT.md: Comprehensive guide for AWS Free Tier deployment
+  - setup_bot.sh: Automated installation script for Ubuntu EC2 instances
+  - telebot.service: Systemd service file for 24/7 auto-start and monitoring
+  - aws_setup_helper.py: Interactive configuration script for environment variables
+  - requirements.txt: All 48 dependencies documented and verified
   
-- **Security cleanup for GitHub push:**
+- **Security cleanup for production:**
   - Removed all sensitive runtime files (sessions, database, CAPTCHA images)
   - Updated .gitignore to protect: temp_captchas/, sessions_test/, secure_*.session, *.db
   - Removed all __pycache__ directories and .pyc files
   - Removed 40+ empty/outdated documentation files
-  - Architect-verified: Repository is clean and ready for GitHub push
+  - Repository is clean and production-ready
   
-- **Database configuration verified:**
-  - database/__init__.py already supports Railway's DATABASE_URL environment variable
-  - Automatic postgres:// to postgresql:// conversion for Railway compatibility
-  - No code changes needed - works out of the box with Railway PostgreSQL
+- **Database configuration:**
+  - Supports both local PostgreSQL and AWS RDS
+  - Automatic connection string handling via DATABASE_URL
+  - Database initialization script included
+  - Daily automated backup script included
   
-- **Project ready for deployment:**
-  - Cost: $5/month free credits, then ~$5-10/month for 24/7 operation
-  - All deployment files verified and working
-  - Zero security vulnerabilities - no secrets or PII will be committed
+- **Deployment benefits:**
+  - Cost: **FREE for 12 months** via AWS Free Tier, then ~$8-10/month
+  - Professional EC2 infrastructure with easy scaling
+  - Full VPS control - no userbot hosting restrictions
+  - Auto-restart on failures, auto-start on reboot
+  - Complete logging via systemd journald
 
 **October 21, 2025 - Admin Panel Bug Fixes & Enhancements:**
 - **Fixed Reports & Logs System:**
