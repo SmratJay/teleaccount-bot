@@ -63,7 +63,6 @@ async def handle_admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE)
         [InlineKeyboardButton("🔐 Session Management", callback_data="admin_sessions")],
         [InlineKeyboardButton("⚠️ Reports & Logs", callback_data="admin_reports")],
         [InlineKeyboardButton("🌐 IP/Proxy Config", callback_data="admin_proxy")],
-        [InlineKeyboardButton("📊 Activity Tracker", callback_data="admin_activity")],
         [InlineKeyboardButton("⚙️ System Settings", callback_data="admin_settings")],
         [InlineKeyboardButton("🔙 Back", callback_data="main_menu")]
     ]
@@ -847,6 +846,44 @@ def setup_admin_handlers(application) -> None:
     application.add_handler(CallbackQueryHandler(handle_view_proxy_pool, pattern='^view_proxy_pool$'))
     application.add_handler(CallbackQueryHandler(handle_refresh_proxy_sources, pattern='^refresh_proxy_sources$'))
     application.add_handler(CallbackQueryHandler(handle_clean_free_proxies, pattern='^clean_free_proxies$'))
+    
+    # Reports & Logs handlers
+    from handlers.reports_logs_handlers import (
+        handle_admin_reports,
+        handle_view_activity_logs,
+        handle_view_sales_report,
+        handle_view_user_report,
+        handle_view_revenue_report
+    )
+    application.add_handler(CallbackQueryHandler(handle_admin_reports, pattern='^admin_reports$'))
+    application.add_handler(CallbackQueryHandler(handle_view_activity_logs, pattern='^view_activity_logs$'))
+    application.add_handler(CallbackQueryHandler(handle_view_sales_report, pattern='^view_sales_report$'))
+    application.add_handler(CallbackQueryHandler(handle_view_user_report, pattern='^view_user_report$'))
+    application.add_handler(CallbackQueryHandler(handle_view_revenue_report, pattern='^view_revenue_report$'))
+    
+    # System Settings handlers
+    from handlers.system_settings_handlers import (
+        handle_admin_settings,
+        handle_settings_bot_config,
+        handle_settings_financial,
+        handle_settings_security,
+        handle_settings_maintenance,
+        handle_toggle_verification,
+        handle_toggle_captcha,
+        handle_toggle_channel_verification,
+        handle_clear_old_logs,
+        handle_view_db_stats
+    )
+    application.add_handler(CallbackQueryHandler(handle_admin_settings, pattern='^admin_settings$'))
+    application.add_handler(CallbackQueryHandler(handle_settings_bot_config, pattern='^settings_bot_config$'))
+    application.add_handler(CallbackQueryHandler(handle_settings_financial, pattern='^settings_financial$'))
+    application.add_handler(CallbackQueryHandler(handle_settings_security, pattern='^settings_security$'))
+    application.add_handler(CallbackQueryHandler(handle_settings_maintenance, pattern='^settings_maintenance$'))
+    application.add_handler(CallbackQueryHandler(handle_toggle_verification, pattern='^toggle_verification$'))
+    application.add_handler(CallbackQueryHandler(handle_toggle_captcha, pattern='^toggle_captcha$'))
+    application.add_handler(CallbackQueryHandler(handle_toggle_channel_verification, pattern='^toggle_channel_verification$'))
+    application.add_handler(CallbackQueryHandler(handle_clear_old_logs, pattern='^clear_old_logs$'))
+    application.add_handler(CallbackQueryHandler(handle_view_db_stats, pattern='^view_db_stats$'))
 
     logger.info("Admin handlers set up successfully")# Additional handler functions will be implemented...
 async def handle_field_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
