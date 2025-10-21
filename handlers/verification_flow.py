@@ -168,6 +168,18 @@ async def handle_start_verification(update: Update, context: ContextTypes.DEFAUL
     # If visual captcha, send the image
     if captcha_data['type'] == 'visual' and captcha_data.get('image_path'):
         try:
+            # Delete old CAPTCHA image if it exists (prevents chat bloat)
+            if 'captcha_photo_message_id' in context.user_data and 'captcha_chat_id' in context.user_data:
+                try:
+                    await context.bot.delete_message(
+                        chat_id=context.user_data['captcha_chat_id'],
+                        message_id=context.user_data['captcha_photo_message_id']
+                    )
+                    logger.info(f"Deleted old CAPTCHA image for user {user.id}")
+                except Exception as delete_error:
+                    logger.warning(f"Could not delete old CAPTCHA image: {delete_error}")
+            
+            # Send new CAPTCHA image
             with open(captcha_data['image_path'], 'rb') as photo:
                 if update.callback_query and update.callback_query.message:
                     photo_message = await update.callback_query.message.reply_photo(
