@@ -221,7 +221,7 @@ def setup_real_handlers(application) -> None:
                 if not db_user:
                     from database.models import User
                     db_user = User(
-                        telegram_id=user.id,
+                        telegram_user_id=user.id,
                         username=user.username,
                         first_name=user.first_name,
                         last_name=user.last_name
