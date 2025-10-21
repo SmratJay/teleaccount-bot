@@ -1,0 +1,203 @@
+Network settings  Info
+VPC - required
+ Info
+
+vpc-01f867c8683fa8617
+(default)
+172.31.0.0/16
+
+Subnet
+ Info
+
+No preference
+
+Create new subnet 
+Availability Zone
+ Info
+
+No preference
+
+Enable additional zones 
+Auto-assign public IP
+ Info
+
+Enable
+Firewall (security groups)
+ Info
+A security group is a set of firewall rules that control the traffic for your instance. Add rules to allow specific traffic to reach your instance.
+Create security group
+Select existing security group
+Security group name - required
+launch-wizard-2
+This security group will be added to all network interfaces. The name can't be edited after the security group is created. Max length is 255 characters. Valid characters: a-z, A-Z, 0-9, spaces, and ._-:/()#,@[]+=&;{}!$*
+Description - required
+ Info
+launch-wizard-2 created 2025-10-21T19:44:56.684Z
+Inbound Security Group Rules
+Security group rule 1 (TCP, 22, 0.0.0.0/0)
+Remove
+Type
+ Info
+
+ssh
+Protocol
+ Info
+TCP
+Port range
+ Info
+22
+Source type
+ Info
+
+Anywhere
+Source
+ Info
+0.0.0.0/0
+
+Description - optional
+ Info
+Rules with source of 0.0.0.0/0 allow all IP addresses to access your instance. We recommend setting security group rules to allow access from known IP addresses only.
+
+Add security group rule
+Configure storage  Info
+Advanced
+1x
+8
+GiB
+
+gp3
+Root volume,
+3000 IOPS,
+Not encrypted
+Add new volume
+The selected AMI contains instance store volumes, however the instance does not allow any instance store volumes. None of the instance store volumes from the AMI will be accessible from the instance
+Click refresh to view backup information
+The tags that you assign determine whether the instance will be backed up by any Data Lifecycle Manager policies.
+
+0 x File systemsEdit
+Advanced details  Info
+Domain join directory
+ Info
+
+Select
+
+Create new directory 
+IAM instance profile
+ Info
+
+Select
+
+Create new IAM profile 
+Hostname type
+ Info
+
+IP name
+DNS Hostname
+ Info
+Enable IP name IPv4 (A record) DNS requests
+Enable resource-based IPv4 (A record) DNS requests
+Enable resource-based IPv6 (AAAA record) DNS requests
+Instance auto-recovery
+ Info
+
+Select
+Shutdown behavior
+ Info
+
+Stop
+Stop - Hibernate behavior
+ Info
+
+Select
+Termination protection
+ Info
+
+Select
+Stop protection
+ Info
+
+Select
+Detailed CloudWatch monitoring
+ Info
+
+Select
+Credit specification
+ Info
+
+Select
+Your instance type configuration does not support burstable performance.
+Placement group
+ Info
+
+Select
+
+Create new placement group 
+EBS-optimized instance
+ Info
+
+Enable
+Instance bandwidth configuration
+ Info
+
+Select
+Purchasing option
+ Info
+None
+Capacity Blocks
+Launch instances for your active capacity blocks
+Spot instances
+Request Spot Instances at the Spot price, capped at the On-Demand price
+Capacity reservation
+ Info
+
+Select
+Tenancy
+ Info
+
+Select
+RAM disk ID
+ Info
+
+Select
+Kernel ID
+ Info
+
+Select
+Nitro Enclave
+ Info
+
+Select
+License configurations
+ Info
+
+Select
+
+CPU options - update
+ Info
+Configure CPUs for your instance to optimize performance and save on licensing costs.
+Use default CPU options
+Specify CPU options
+Default active vCPUs
+2
+Total vCPUs
+2
+Metadata accessible
+ Info
+
+Enabled
+Metadata IPv6 endpoint
+ Info
+
+Select
+Metadata version
+ Info
+
+V2 only (token required)
+For V2 requests, you must include a session token in all instance metadata requests. Applications or agents that use V1 for instance metadata access will break.
+Metadata response hop limit
+ Info
+2
+Allow tags in metadata
+ Info
+
+Select
