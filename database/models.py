@@ -2,7 +2,7 @@
 Database models for the Telegram Account Bot.
 Properly mapped to actual database schema.
 """
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Float, ForeignKey, Enum
+from sqlalchemy import Column, Integer, BigInteger, String, DateTime, Boolean, Text, Float, ForeignKey, Enum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
@@ -63,7 +63,7 @@ class User(Base):
     __tablename__ = 'users'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    telegram_user_id = Column(Integer, unique=True, nullable=False, index=True)
+    telegram_user_id = Column(BigInteger, unique=True, nullable=False, index=True)
     username = Column(String(255), nullable=True)
     first_name = Column(String(255), nullable=True)
     last_name = Column(String(255), nullable=True)
@@ -433,7 +433,7 @@ class AccountSale(Base):
     sessions_terminated = Column(Boolean, default=False)
     
     # Buyer information
-    buyer_telegram_id = Column(Integer, nullable=True)
+    buyer_telegram_id = Column(BigInteger, nullable=True)
     sale_completed_at = Column(DateTime, nullable=True)
     configuration_notes = Column(Text, nullable=True)
     
