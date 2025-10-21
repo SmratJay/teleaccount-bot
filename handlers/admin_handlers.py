@@ -787,6 +787,14 @@ def setup_admin_handlers(application) -> None:
     application.add_handler(CallbackQueryHandler(handle_approve_sale_list, pattern='^approve_sale_list$'))
     application.add_handler(CallbackQueryHandler(handle_approve_sale_action, pattern='^approve_sale_\\d+$'))
     application.add_handler(CallbackQueryHandler(handle_reject_sale_action, pattern='^reject_sale_\\d+$'))
+    
+    # Session Management handlers
+    application.add_handler(CallbackQueryHandler(handle_session_management, pattern='^admin_sessions$'))
+    application.add_handler(CallbackQueryHandler(handle_terminate_user_sessions, pattern='^terminate_user_sessions$'))
+    application.add_handler(CallbackQueryHandler(handle_terminate_sessions_confirm, pattern='^terminate_sessions_\\d+$'))
+    application.add_handler(CallbackQueryHandler(handle_view_session_holds, pattern='^view_session_holds$'))
+    application.add_handler(CallbackQueryHandler(handle_release_all_holds, pattern='^release_all_holds$'))
+    application.add_handler(CallbackQueryHandler(handle_session_activity_logs, pattern='^session_activity_logs$'))
 
     logger.info("Admin handlers set up successfully")# Additional handler functions will be implemented...
 async def handle_field_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1308,6 +1316,395 @@ Please try again.
             [InlineKeyboardButton('📋 Back to Sales', callback_data='sale_logs_panel')],
             [InlineKeyboardButton('❌ Reject Another', callback_data='approve_sale_list')]
         ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+    finally:
+        close_db_session(db)
+
+
+
+async def handle_session_management(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Main session management panel - terminate sessions, view holds, etc."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    if not is_admin(user.id):
+        await query.answer("❌ Access denied.", show_alert=True)
+        return
+    
+    # Import session manager
+    from services.session_management import session_manager
+    
+    # Get session statistics
+    stats = session_manager.get_session_monitoring_stats()
+    
+    session_text = f"""
+🔐 **SESSION MANAGEMENT PANEL**
+
+**📊 Current Statistics:**
+• 📱 Accounts on Hold: {stats.get('held_accounts', 0)}
+• ⚠️ Multi-Device Detected: {stats.get('multi_device_accounts', 0)}
+• 📝 Recent Activities (7d): {stats.get('recent_activities', 0)}
+• 🟢 Monitoring Status: {"Active" if stats.get('monitoring_active') else "Inactive"}
+
+**🔧 Available Actions:**
+• Terminate all sessions for a specific user
+• View and release accounts on hold
+• View session activity logs
+• Configure session settings
+
+**💡 About Session Management:**
+This system automatically detects multi-device usage and places accounts on temporary hold. You can manually terminate sessions or release holds as needed.
+    """
+    
+    keyboard = [
+        [InlineKeyboardButton("🚫 Terminate User Sessions", callback_data="terminate_user_sessions")],
+        [InlineKeyboardButton("📋 View Accounts on Hold", callback_data="view_session_holds")],
+        [InlineKeyboardButton("🔓 Release All Holds", callback_data="release_all_holds")],
+        [InlineKeyboardButton("📊 Session Activity Logs", callback_data="session_activity_logs")],
+        [InlineKeyboardButton("🔙 Back to Admin Panel", callback_data="admin_panel")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        session_text,
+        parse_mode='Markdown',
+        reply_markup=reply_markup
+    )
+
+
+async def handle_terminate_user_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show list of users to terminate sessions for."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    if not is_admin(user.id):
+        await query.answer("❌ Access denied.", show_alert=True)
+        return
+    
+    db = get_db_session()
+    try:
+        # Get all users with active accounts
+        from database.models import TelegramAccount
+        users_with_accounts = db.query(User).join(
+            TelegramAccount, 
+            TelegramAccount.user_id == User.id
+        ).distinct().limit(20).all()
+        
+        if not users_with_accounts:
+            await query.edit_message_text(
+                "⚠️ **No users with accounts found.**\n\nThere are no users with Telegram accounts to manage.",
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Back", callback_data="admin_sessions")
+                ]])
+            )
+            return
+        
+        text = """
+🚫 **TERMINATE USER SESSIONS**
+
+Select a user to terminate all their active Telegram sessions:
+
+**⚠️ Warning:** This will log the user out of all devices!
+        """
+        
+        keyboard = []
+        for u in users_with_accounts[:15]:  # Limit to 15 users for UI
+            display_name = u.username or u.first_name or f"User {u.telegram_user_id}"
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"👤 {display_name} (ID: {u.telegram_user_id})",
+                    callback_data=f"terminate_sessions_{u.id}"
+                )
+            ])
+        
+        keyboard.append([InlineKeyboardButton("🔙 Back", callback_data="admin_sessions")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+    finally:
+        close_db_session(db)
+
+
+async def handle_terminate_sessions_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Terminate all sessions for a specific user."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    if not is_admin(user.id):
+        await query.answer("❌ Access denied.", show_alert=True)
+        return
+    
+    # Extract user_id from callback data
+    user_id = int(query.data.split('_')[-1])
+    
+    db = get_db_session()
+    try:
+        # Get user details
+        target_user = db.query(User).filter(User.id == user_id).first()
+        if not target_user:
+            await query.answer("❌ User not found.", show_alert=True)
+            return
+        
+        # Get user's Telegram accounts
+        from database.models import TelegramAccount
+        accounts = db.query(TelegramAccount).filter(
+            TelegramAccount.user_id == user_id
+        ).all()
+        
+        if not accounts:
+            await query.answer("⚠️ No accounts found for this user.", show_alert=True)
+            return
+        
+        # Show processing message
+        processing_text = f"""
+⏳ **TERMINATING SESSIONS...**
+
+**User:** {target_user.username or target_user.first_name}
+**Telegram ID:** {target_user.telegram_user_id}
+**Accounts Found:** {len(accounts)}
+
+🔄 Processing session terminations...
+        """
+        await query.edit_message_text(processing_text, parse_mode='Markdown')
+        
+        # Terminate sessions for each account
+        from services.session_management import session_manager
+        from services.real_telegram import real_telegram_service
+        
+        success_count = 0
+        failed_count = 0
+        
+        for account in accounts:
+            try:
+                # Create Telethon client for the account
+                client = await real_telegram_service.create_client(
+                    account.phone_number,
+                    use_proxy=False
+                )
+                
+                if client:
+                    # Terminate all sessions
+                    result = await session_manager.terminate_all_user_sessions(
+                        client, 
+                        target_user.telegram_user_id
+                    )
+                    
+                    if result.get('success'):
+                        success_count += 1
+                        logger.info(f"✅ Terminated sessions for account {account.phone_number}")
+                    else:
+                        failed_count += 1
+                        logger.error(f"❌ Failed to terminate sessions for {account.phone_number}")
+                    
+                    # Disconnect client
+                    await client.disconnect()
+                else:
+                    failed_count += 1
+                    
+            except Exception as e:
+                failed_count += 1
+                logger.error(f"Error terminating sessions for account {account.phone_number}: {e}")
+        
+        # Show results
+        result_text = f"""
+✅ **SESSION TERMINATION COMPLETE**
+
+**User:** {target_user.username or target_user.first_name}
+**Telegram ID:** {target_user.telegram_user_id}
+
+**Results:**
+• ✅ Successful: {success_count} accounts
+• ❌ Failed: {failed_count} accounts
+• 📊 Total Processed: {len(accounts)} accounts
+
+The user has been logged out of all devices where termination succeeded.
+        """
+        
+        keyboard = [
+            [InlineKeyboardButton("🚫 Terminate Another User", callback_data="terminate_user_sessions")],
+            [InlineKeyboardButton("🔙 Back to Session Management", callback_data="admin_sessions")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(result_text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+    finally:
+        close_db_session(db)
+
+
+async def handle_view_session_holds(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """View accounts currently on hold due to multi-device detection."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    if not is_admin(user.id):
+        await query.answer("❌ Access denied.", show_alert=True)
+        return
+    
+    db = get_db_session()
+    try:
+        from database.models import TelegramAccount, AccountStatus
+        
+        # Get accounts on hold
+        held_accounts = db.query(TelegramAccount).filter(
+            TelegramAccount.status == AccountStatus.TWENTY_FOUR_HOUR_HOLD
+        ).all()
+        
+        if not held_accounts:
+            text = """
+✅ **NO ACCOUNTS ON HOLD**
+
+There are currently no accounts on temporary hold.
+All accounts are operating normally.
+            """
+            keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="admin_sessions")]]
+        else:
+            text = f"""
+📋 **ACCOUNTS ON HOLD**
+
+**Total Accounts:** {len(held_accounts)}
+
+**Accounts List:**
+"""
+            for i, account in enumerate(held_accounts[:10], 1):  # Show first 10
+                hold_time_left = "N/A"
+                if account.hold_until:
+                    time_left = account.hold_until - datetime.utcnow()
+                    hours_left = int(time_left.total_seconds() / 3600)
+                    hold_time_left = f"{hours_left}h" if hours_left > 0 else "Expired"
+                
+                text += f"\n{i}. **{account.phone_number}**"
+                text += f"\n   └ Hold expires: {hold_time_left}"
+                text += f"\n   └ Reason: {account.freeze_reason or 'Multi-device detected'}\n"
+            
+            if len(held_accounts) > 10:
+                text += f"\n_...and {len(held_accounts) - 10} more accounts_"
+            
+            keyboard = [
+                [InlineKeyboardButton("🔓 Release All Holds", callback_data="release_all_holds")],
+                [InlineKeyboardButton("🔙 Back", callback_data="admin_sessions")]
+            ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+    finally:
+        close_db_session(db)
+
+
+async def handle_release_all_holds(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Release all accounts from hold."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    if not is_admin(user.id):
+        await query.answer("❌ Access denied.", show_alert=True)
+        return
+    
+    # Show processing message
+    await query.edit_message_text(
+        "⏳ **Releasing all holds...**\n\nPlease wait...",
+        parse_mode='Markdown'
+    )
+    
+    from services.session_management import session_manager
+    
+    # Release holds
+    result = await session_manager.check_and_release_holds()
+    
+    if result.get('success'):
+        released = result.get('released_count', 0)
+        errors = result.get('errors', [])
+        
+        text = f"""
+✅ **HOLDS RELEASED**
+
+**Released Accounts:** {released}
+**Errors:** {len(errors)}
+
+All eligible accounts have been released from hold.
+        """
+        
+        if errors:
+            text += f"\n\n**Errors:**\n"
+            for error in errors[:5]:  # Show first 5 errors
+                text += f"• {error}\n"
+    else:
+        text = f"""
+❌ **RELEASE FAILED**
+
+**Error:** {result.get('error', 'Unknown error')}
+
+Please try again or check logs for details.
+        """
+    
+    keyboard = [
+        [InlineKeyboardButton("📋 View Holds", callback_data="view_session_holds")],
+        [InlineKeyboardButton("🔙 Back", callback_data="admin_sessions")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+
+
+async def handle_session_activity_logs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """View recent session-related activity logs."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    if not is_admin(user.id):
+        await query.answer("❌ Access denied.", show_alert=True)
+        return
+    
+    db = get_db_session()
+    try:
+        from database.models import ActivityLog
+        
+        # Get recent session activities
+        activities = db.query(ActivityLog).filter(
+            ActivityLog.action_type.in_([
+                'SESSION_MONITORED', 'ACCOUNT_HOLD', 'ACCOUNT_RELEASED', 
+                'ALL_SESSIONS_TERMINATED'
+            ])
+        ).order_by(ActivityLog.created_at.desc()).limit(15).all()
+        
+        if not activities:
+            text = """
+📊 **SESSION ACTIVITY LOGS**
+
+No recent session activities found.
+            """
+        else:
+            text = f"""
+📊 **SESSION ACTIVITY LOGS**
+
+**Recent Activities ({len(activities)}):**
+
+"""
+            for activity in activities:
+                timestamp = activity.created_at.strftime('%m/%d %H:%M')
+                action_emoji = {
+                    'SESSION_MONITORED': '👀',
+                    'ACCOUNT_HOLD': '⏸️',
+                    'ACCOUNT_RELEASED': '▶️',
+                    'ALL_SESSIONS_TERMINATED': '🚫'
+                }.get(activity.action_type, '•')
+                
+                text += f"{action_emoji} **{activity.action_type}**\n"
+                text += f"   └ {timestamp} - {activity.details[:50]}...\n\n"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="admin_sessions")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
