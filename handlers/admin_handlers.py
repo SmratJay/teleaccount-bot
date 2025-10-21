@@ -57,11 +57,12 @@ async def handle_admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE)
     keyboard = [
         [InlineKeyboardButton("📢 Mailing Mode", callback_data="admin_mailing")],
         [InlineKeyboardButton("👥 Manual User Edit", callback_data="admin_user_edit")],
+        [InlineKeyboardButton("🛠️ Account Manipulation", callback_data="account_manipulation")],
         [InlineKeyboardButton("❄️ Account Freeze Management", callback_data="admin_freeze_panel")],
         [InlineKeyboardButton("📋 Sale Logs & Approval", callback_data="sale_logs_panel")],
+        [InlineKeyboardButton("🔐 Session Management", callback_data="admin_sessions")],
         [InlineKeyboardButton("🗑️ Chat History Control", callback_data="admin_chat_control")],
         [InlineKeyboardButton("⚠️ Reports & Logs", callback_data="admin_reports")],
-        [InlineKeyboardButton("🔐 Session Management", callback_data="admin_sessions")],
         [InlineKeyboardButton("🌐 IP/Proxy Config", callback_data="admin_proxy")],
         [InlineKeyboardButton("📊 Activity Tracker", callback_data="admin_activity")],
         [InlineKeyboardButton("⚙️ System Settings", callback_data="admin_settings")],
@@ -795,6 +796,50 @@ def setup_admin_handlers(application) -> None:
     application.add_handler(CallbackQueryHandler(handle_view_session_holds, pattern='^view_session_holds$'))
     application.add_handler(CallbackQueryHandler(handle_release_all_holds, pattern='^release_all_holds$'))
     application.add_handler(CallbackQueryHandler(handle_session_activity_logs, pattern='^session_activity_logs$'))
+    
+    # Account Manipulation conversation handler
+    account_manip_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(handle_account_manipulation_panel, pattern='^account_manipulation$')
+        ],
+        states={
+            ACCOUNT_SELECT: [
+                CallbackQueryHandler(handle_manipulation_account_select, pattern='^manipulate_account_\\d+$')
+            ],
+            MANIPULATION_ACTION: [
+                CallbackQueryHandler(handle_delete_history_action, pattern='^manip_delete_history$'),
+                CallbackQueryHandler(handle_change_name_start, pattern='^manip_change_name$'),
+                CallbackQueryHandler(handle_change_username_start, pattern='^manip_change_username$'),
+                CallbackQueryHandler(handle_profile_photo_menu, pattern='^manip_profile_photo$'),
+                CallbackQueryHandler(handle_2fa_menu, pattern='^manip_2fa$'),
+                CallbackQueryHandler(handle_view_account_info, pattern='^manip_view_info$'),
+                CallbackQueryHandler(handle_manipulation_account_select, pattern='^manipulate_account_\\d+$'),
+                CallbackQueryHandler(handle_account_manipulation_panel, pattern='^account_manipulation$')
+            ],
+            NAME_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_name_input)
+            ],
+            USERNAME_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_username_input)
+            ],
+            PHOTO_SELECT: [
+                CallbackQueryHandler(handle_upload_photo, pattern='^upload_photo_'),
+                CallbackQueryHandler(handle_delete_all_photos, pattern='^delete_all_photos$'),
+                CallbackQueryHandler(handle_profile_photo_menu, pattern='^manip_profile_photo$'),
+                CallbackQueryHandler(handle_manipulation_account_select, pattern='^manipulate_account_\\d+$')
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(handle_admin_panel, pattern='^admin_panel$'),
+            CommandHandler('start', cancel_conversation),
+            CommandHandler('cancel', cancel_conversation)
+        ],
+        per_user=True,
+        per_chat=True,
+        allow_reentry=True,
+        conversation_timeout=600  # 10 minutes timeout for account operations
+    )
+    application.add_handler(account_manip_conv)
 
     logger.info("Admin handlers set up successfully")# Additional handler functions will be implemented...
 async def handle_field_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1711,4 +1756,750 @@ No recent session activities found.
         
     finally:
         close_db_session(db)
+
+
+
+# ==================== ACCOUNT MANIPULATION PANEL ====================
+
+# Conversation states for account manipulation
+ACCOUNT_SELECT, MANIPULATION_ACTION, NAME_INPUT, USERNAME_INPUT, PHOTO_SELECT, PASSWORD_INPUT = range(1000, 1006)
+
+
+async def handle_account_manipulation_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Show account manipulation main panel - select account to manipulate."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    if not is_admin(user.id):
+        await query.answer("❌ Access denied.", show_alert=True)
+        return ConversationHandler.END
+    
+    db = get_db_session()
+    try:
+        from database.models import TelegramAccount, AccountStatus
+        
+        # Get all sold accounts (available accounts we can manipulate)
+        accounts = db.query(TelegramAccount).filter(
+            TelegramAccount.status.in_([AccountStatus.AVAILABLE, AccountStatus.SOLD])
+        ).limit(50).all()
+        
+        if not accounts:
+            await query.edit_message_text(
+                "⚠️ **No accounts available for manipulation.**\n\nThere are no sold or available accounts to manage.",
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Back to Admin Panel", callback_data="admin_panel")
+                ]])
+            )
+            return ConversationHandler.END
+        
+        text = f"""
+🛠️ **ACCOUNT MANIPULATION PANEL**
+
+**Available Operations:**
+• 🗑️ Delete all chat history
+• 👤 Change account name
+• 📝 Change username (@handle)
+• 🖼️ Upload profile photo
+• 🔒 Setup/modify 2FA
+
+**Accounts Available:** {len(accounts)}
+
+Select an account to manipulate:
+        """
+        
+        keyboard = []
+        for account in accounts[:20]:  # Show first 20
+            display = f"{account.phone_number}"
+            if account.status == AccountStatus.SOLD:
+                display += " [SOLD]"
+            
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"📱 {display}",
+                    callback_data=f"manipulate_account_{account.id}"
+                )
+            ])
+        
+        if len(accounts) > 20:
+            keyboard.append([InlineKeyboardButton(
+                f"... and {len(accounts) - 20} more (scroll down)",
+                callback_data="noop"
+            )])
+        
+        keyboard.append([InlineKeyboardButton("🔙 Back", callback_data="admin_panel")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+        # Store in context for conversation flow
+        context.user_data['manipulation_mode'] = True
+        
+        return ACCOUNT_SELECT
+        
+    finally:
+        close_db_session(db)
+
+
+async def handle_manipulation_account_select(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle account selection for manipulation."""
+    query = update.callback_query
+    await query.answer()
+    
+    # Extract account_id
+    account_id = int(query.data.split('_')[-1])
+    
+    db = get_db_session()
+    try:
+        from database.models import TelegramAccount
+        
+        account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+        
+        if not account:
+            await query.answer("❌ Account not found.", show_alert=True)
+            return ConversationHandler.END
+        
+        # Store account info in context
+        context.user_data['manipulation_account_id'] = account_id
+        context.user_data['manipulation_phone'] = account.phone_number
+        
+        # Get account info using service
+        from services.real_telegram import real_telegram_service
+        
+        text = f"""
+🛠️ **ACCOUNT MANIPULATION**
+
+**Selected Account:** {account.phone_number}
+**Status:** {account.status.value}
+
+**Available Operations:**
+
+🗑️ **Delete Chat History** - Remove all conversations
+👤 **Change Name** - Update display name (First & Last)
+📝 **Change Username** - Update @handle
+🖼️ **Profile Photo** - Upload or remove photo
+🔒 **2FA Management** - Setup or modify two-factor authentication
+
+Select an operation:
+        """
+        
+        keyboard = [
+            [InlineKeyboardButton("🗑️ Delete All Chat History", callback_data="manip_delete_history")],
+            [InlineKeyboardButton("👤 Change Account Name", callback_data="manip_change_name")],
+            [InlineKeyboardButton("📝 Change Username", callback_data="manip_change_username")],
+            [InlineKeyboardButton("🖼️ Manage Profile Photo", callback_data="manip_profile_photo")],
+            [InlineKeyboardButton("🔒 2FA Management", callback_data="manip_2fa")],
+            [InlineKeyboardButton("ℹ️ View Account Info", callback_data="manip_view_info")],
+            [InlineKeyboardButton("🔙 Back to Account List", callback_data="account_manipulation")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+        return MANIPULATION_ACTION
+        
+    finally:
+        close_db_session(db)
+
+
+async def handle_delete_history_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Execute chat history deletion."""
+    query = update.callback_query
+    await query.answer()
+    
+    account_id = context.user_data.get('manipulation_account_id')
+    phone = context.user_data.get('manipulation_phone')
+    
+    if not account_id:
+        await query.answer("❌ Session expired.", show_alert=True)
+        return ConversationHandler.END
+    
+    # Show processing message
+    await query.edit_message_text(
+        f"⏳ **Deleting chat history for {phone}...**\n\nThis may take a few minutes.\nPlease wait...",
+        parse_mode='Markdown'
+    )
+    
+    db = get_db_session()
+    try:
+        from services.real_telegram import real_telegram_service
+        from services.account_manipulation import account_manipulation_service
+        
+        # Create Telethon client for the account
+        client = await real_telegram_service.create_client(phone, use_proxy=False)
+        
+        if not client:
+            await query.edit_message_text(
+                f"❌ **Failed to connect**\n\nCould not create session for {phone}.",
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Back", callback_data=f"manipulate_account_{account_id}")
+                ]])
+            )
+            return MANIPULATION_ACTION
+        
+        # Delete chat history
+        result = await account_manipulation_service.delete_all_chat_history(client)
+        
+        # Disconnect client
+        await client.disconnect()
+        
+        # Show results
+        if result.get('success'):
+            deleted = result.get('deleted_count', 0)
+            failed = result.get('failed_count', 0)
+            total = result.get('total_dialogs', 0)
+            
+            text = f"""
+✅ **CHAT HISTORY DELETED**
+
+**Account:** {phone}
+**Total Chats:** {total}
+**Deleted:** {deleted}
+**Failed:** {failed}
+
+All accessible chat history has been removed from the account.
+            """
+        else:
+            text = f"""
+❌ **DELETION FAILED**
+
+**Account:** {phone}
+**Error:** {result.get('error', 'Unknown error')}
+
+Please check logs for details.
+            """
+        
+        keyboard = [
+            [InlineKeyboardButton("🛠️ More Operations", callback_data=f"manipulate_account_{account_id}")],
+            [InlineKeyboardButton("🔙 Back to Account List", callback_data="account_manipulation")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+        return MANIPULATION_ACTION
+        
+    finally:
+        close_db_session(db)
+
+
+async def handle_change_name_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start name change conversation."""
+    query = update.callback_query
+    await query.answer()
+    
+    phone = context.user_data.get('manipulation_phone')
+    
+    text = f"""
+👤 **CHANGE ACCOUNT NAME**
+
+**Account:** {phone}
+
+Please send the new name in this format:
+`FirstName LastName`
+
+Or just send first name:
+`FirstName`
+
+Examples:
+• John Smith
+• Sarah
+• Michael Johnson
+
+Send /cancel to abort.
+    """
+    
+    await query.edit_message_text(text, parse_mode='Markdown')
+    
+    return NAME_INPUT
+
+
+async def handle_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Process name input and change account name."""
+    message = update.message
+    name_parts = message.text.strip().split(maxsplit=1)
+    
+    first_name = name_parts[0] if name_parts else ""
+    last_name = name_parts[1] if len(name_parts) > 1 else None
+    
+    if not first_name:
+        await message.reply_text(
+            "❌ Invalid name format. Please send a valid name.\n\nSend /cancel to abort."
+        )
+        return NAME_INPUT
+    
+    account_id = context.user_data.get('manipulation_account_id')
+    phone = context.user_data.get('manipulation_phone')
+    
+    # Show processing
+    processing_msg = await message.reply_text(
+        f"⏳ **Changing name for {phone}...**",
+        parse_mode='Markdown'
+    )
+    
+    db = get_db_session()
+    try:
+        from services.real_telegram import real_telegram_service
+        from services.account_manipulation import account_manipulation_service
+        
+        # Create client
+        client = await real_telegram_service.create_client(phone, use_proxy=False)
+        
+        if not client:
+            await processing_msg.edit_text(
+                f"❌ **Failed to connect to {phone}**",
+                parse_mode='Markdown'
+            )
+            return ConversationHandler.END
+        
+        # Change name
+        result = await account_manipulation_service.change_account_name(
+            client, first_name, last_name
+        )
+        
+        await client.disconnect()
+        
+        # Show result
+        if result.get('success'):
+            text = f"""
+✅ **NAME CHANGED**
+
+**Account:** {phone}
+**New Name:** {first_name} {last_name or ''}
+
+Account name has been updated successfully!
+            """
+        else:
+            text = f"""
+❌ **NAME CHANGE FAILED**
+
+**Account:** {phone}
+**Error:** {result.get('error', 'Unknown error')}
+            """
+        
+        keyboard = [
+            [InlineKeyboardButton("🛠️ More Operations", callback_data=f"manipulate_account_{account_id}")],
+            [InlineKeyboardButton("🔙 Back to Account List", callback_data="account_manipulation")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await processing_msg.edit_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+        context.user_data.clear()
+        return ConversationHandler.END
+        
+    finally:
+        close_db_session(db)
+
+
+async def handle_change_username_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start username change conversation."""
+    query = update.callback_query
+    await query.answer()
+    
+    phone = context.user_data.get('manipulation_phone')
+    
+    text = f"""
+📝 **CHANGE USERNAME**
+
+**Account:** {phone}
+
+Please send the new username (without @):
+Examples:
+• `john_smith`
+• `sarah2024`
+• `cooluser`
+
+**Requirements:**
+• At least 5 characters
+• Only letters, numbers, and underscores
+• Cannot remove username (send "remove" to delete)
+
+Send /cancel to abort.
+    """
+    
+    await query.edit_message_text(text, parse_mode='Markdown')
+    
+    return USERNAME_INPUT
+
+
+async def handle_username_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Process username input and change account username."""
+    message = update.message
+    new_username = message.text.strip().lstrip('@')
+    
+    account_id = context.user_data.get('manipulation_account_id')
+    phone = context.user_data.get('manipulation_phone')
+    
+    # Show processing
+    processing_msg = await message.reply_text(
+        f"⏳ **Changing username for {phone}...**",
+        parse_mode='Markdown'
+    )
+    
+    db = get_db_session()
+    try:
+        from services.real_telegram import real_telegram_service
+        from services.account_manipulation import account_manipulation_service
+        
+        # Create client
+        client = await real_telegram_service.create_client(phone, use_proxy=False)
+        
+        if not client:
+            await processing_msg.edit_text(
+                f"❌ **Failed to connect to {phone}**",
+                parse_mode='Markdown'
+            )
+            return ConversationHandler.END
+        
+        # Change or remove username
+        if new_username.lower() == 'remove':
+            result = await account_manipulation_service.remove_username(client)
+            action = "removed"
+        else:
+            result = await account_manipulation_service.change_username(client, new_username)
+            action = f"changed to @{new_username}"
+        
+        await client.disconnect()
+        
+        # Show result
+        if result.get('success'):
+            text = f"""
+✅ **USERNAME {action.upper()}**
+
+**Account:** {phone}
+
+Username has been updated successfully!
+            """
+        else:
+            text = f"""
+❌ **USERNAME CHANGE FAILED**
+
+**Account:** {phone}
+**Error:** {result.get('error', 'Unknown error')}
+            """
+        
+        keyboard = [
+            [InlineKeyboardButton("🛠️ More Operations", callback_data=f"manipulate_account_{account_id}")],
+            [InlineKeyboardButton("🔙 Back to Account List", callback_data="account_manipulation")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await processing_msg.edit_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+        context.user_data.clear()
+        return ConversationHandler.END
+        
+    finally:
+        close_db_session(db)
+
+
+async def handle_profile_photo_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Show profile photo management menu."""
+    query = update.callback_query
+    await query.answer()
+    
+    account_id = context.user_data.get('manipulation_account_id')
+    phone = context.user_data.get('manipulation_phone')
+    
+    from services.account_manipulation import account_manipulation_service
+    
+    # Get available photos
+    available_photos = account_manipulation_service.get_available_profile_photos()
+    
+    # Build photo list
+    photo_list = ""
+    if available_photos:
+        photo_list = "**📁 Available Photos:**\n" + "\n".join([f"• {p}" for p in available_photos[:10]])
+        if len(available_photos) > 10:
+            photo_list += f"\n_...and {len(available_photos) - 10} more_"
+    else:
+        photo_list = "⚠️ No photos found in profile_photos/ directory"
+    
+    text = f"""
+🖼️ **PROFILE PHOTO MANAGEMENT**
+
+**Account:** {phone}
+**Available Photos:** {len(available_photos)}
+
+**Actions:**
+• Upload a new profile photo
+• Delete all current profile photos
+
+{photo_list}
+
+Select an action:
+    """
+    
+    keyboard = []
+    
+    # Add photo selection buttons
+    if available_photos:
+        for photo in available_photos[:15]:  # Show first 15
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"📷 {photo}",
+                    callback_data=f"upload_photo_{photo}"
+                )
+            ])
+    
+    keyboard.extend([
+        [InlineKeyboardButton("🗑️ Delete All Profile Photos", callback_data="delete_all_photos")],
+        [InlineKeyboardButton("🔙 Back", callback_data=f"manipulate_account_{account_id}")]
+    ])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+    
+    return PHOTO_SELECT
+
+
+async def handle_upload_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Upload selected photo to account."""
+    query = update.callback_query
+    await query.answer()
+    
+    # Extract photo filename
+    photo_filename = query.data.replace('upload_photo_', '')
+    
+    account_id = context.user_data.get('manipulation_account_id')
+    phone = context.user_data.get('manipulation_phone')
+    
+    # Show processing
+    await query.edit_message_text(
+        f"⏳ **Uploading photo {photo_filename} to {phone}...**",
+        parse_mode='Markdown'
+    )
+    
+    db = get_db_session()
+    try:
+        from services.real_telegram import real_telegram_service
+        from services.account_manipulation import account_manipulation_service
+        
+        # Create client
+        client = await real_telegram_service.create_client(phone, use_proxy=False)
+        
+        if not client:
+            await query.edit_message_text(
+                f"❌ **Failed to connect to {phone}**",
+                parse_mode='Markdown'
+            )
+            return ConversationHandler.END
+        
+        # Upload photo
+        result = await account_manipulation_service.upload_profile_photo(client, photo_filename)
+        
+        await client.disconnect()
+        
+        # Show result
+        if result.get('success'):
+            text = f"""
+✅ **PROFILE PHOTO UPLOADED**
+
+**Account:** {phone}
+**Photo:** {photo_filename}
+
+Profile photo has been updated successfully!
+            """
+        else:
+            text = f"""
+❌ **PHOTO UPLOAD FAILED**
+
+**Account:** {phone}
+**Error:** {result.get('error', 'Unknown error')}
+            """
+        
+        keyboard = [
+            [InlineKeyboardButton("🖼️ Upload Another", callback_data="manip_profile_photo")],
+            [InlineKeyboardButton("🛠️ More Operations", callback_data=f"manipulate_account_{account_id}")],
+            [InlineKeyboardButton("🔙 Back to Account List", callback_data="account_manipulation")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+        return MANIPULATION_ACTION
+        
+    finally:
+        close_db_session(db)
+
+
+async def handle_delete_all_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Delete all profile photos from account."""
+    query = update.callback_query
+    await query.answer()
+    
+    account_id = context.user_data.get('manipulation_account_id')
+    phone = context.user_data.get('manipulation_phone')
+    
+    # Show processing
+    await query.edit_message_text(
+        f"⏳ **Deleting all profile photos from {phone}...**",
+        parse_mode='Markdown'
+    )
+    
+    db = get_db_session()
+    try:
+        from services.real_telegram import real_telegram_service
+        from services.account_manipulation import account_manipulation_service
+        
+        # Create client
+        client = await real_telegram_service.create_client(phone, use_proxy=False)
+        
+        if not client:
+            await query.edit_message_text(
+                f"❌ **Failed to connect to {phone}**",
+                parse_mode='Markdown'
+            )
+            return ConversationHandler.END
+        
+        # Delete photos
+        result = await account_manipulation_service.delete_profile_photos(client)
+        
+        await client.disconnect()
+        
+        # Show result
+        if result.get('success'):
+            deleted_count = result.get('deleted_count', 0)
+            text = f"""
+✅ **PROFILE PHOTOS DELETED**
+
+**Account:** {phone}
+**Deleted:** {deleted_count} photos
+
+All profile photos have been removed.
+            """
+        else:
+            text = f"""
+❌ **DELETION FAILED**
+
+**Account:** {phone}
+**Error:** {result.get('error', 'Unknown error')}
+            """
+        
+        keyboard = [
+            [InlineKeyboardButton("🖼️ Manage Photos", callback_data="manip_profile_photo")],
+            [InlineKeyboardButton("🛠️ More Operations", callback_data=f"manipulate_account_{account_id}")],
+            [InlineKeyboardButton("🔙 Back to Account List", callback_data="account_manipulation")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+        return MANIPULATION_ACTION
+        
+    finally:
+        close_db_session(db)
+
+
+async def handle_2fa_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Show 2FA management menu."""
+    query = update.callback_query
+    await query.answer()
+    
+    account_id = context.user_data.get('manipulation_account_id')
+    phone = context.user_data.get('manipulation_phone')
+    
+    text = f"""
+🔒 **2FA MANAGEMENT**
+
+**Account:** {phone}
+
+**Two-Factor Authentication** adds an extra layer of security to the account.
+
+**Available Actions:**
+• Setup new 2FA password
+• Disable current 2FA
+• Check 2FA status
+
+⚠️ **Warning:** Changing 2FA settings will affect account security.
+
+Select an action:
+    """
+    
+    keyboard = [
+        [InlineKeyboardButton("🔐 Setup/Change 2FA", callback_data="2fa_setup")],
+        [InlineKeyboardButton("🔓 Disable 2FA", callback_data="2fa_disable")],
+        [InlineKeyboardButton("ℹ️ Check Status", callback_data="2fa_status")],
+        [InlineKeyboardButton("🔙 Back", callback_data=f"manipulate_account_{account_id}")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+    
+    return MANIPULATION_ACTION
+
+
+async def handle_view_account_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """View detailed account information."""
+    query = update.callback_query
+    await query.answer()
+    
+    account_id = context.user_data.get('manipulation_account_id')
+    phone = context.user_data.get('manipulation_phone')
+    
+    # Show loading
+    await query.edit_message_text(
+        f"⏳ **Fetching account info for {phone}...**",
+        parse_mode='Markdown'
+    )
+    
+    db = get_db_session()
+    try:
+        from services.real_telegram import real_telegram_service
+        from services.account_manipulation import account_manipulation_service
+        
+        # Create client
+        client = await real_telegram_service.create_client(phone, use_proxy=False)
+        
+        if not client:
+            await query.edit_message_text(
+                f"❌ **Failed to connect to {phone}**",
+                parse_mode='Markdown'
+            )
+            return MANIPULATION_ACTION
+        
+        # Get account info
+        result = await account_manipulation_service.get_account_info(client)
+        
+        await client.disconnect()
+        
+        if result.get('success'):
+            info = result
+            text = f"""
+ℹ️ **ACCOUNT INFORMATION**
+
+**📱 Phone:** {info.get('phone', 'N/A')}
+**🆔 ID:** {info.get('id', 'N/A')}
+**👤 Name:** {info.get('first_name', '')} {info.get('last_name', '')}
+**📝 Username:** @{info.get('username', 'none')}
+**✅ Verified:** {"Yes" if info.get('is_verified') else "No"}
+**🤖 Bot:** {"Yes" if info.get('is_bot') else "No"}
+**⚠️ Restricted:** {"Yes" if info.get('is_restricted') else "No"}
+
+This is the current state of the account on Telegram.
+            """
+        else:
+            text = f"""
+❌ **FAILED TO GET INFO**
+
+**Account:** {phone}
+**Error:** {result.get('error', 'Unknown error')}
+            """
+        
+        keyboard = [
+            [InlineKeyboardButton("🔙 Back to Operations", callback_data=f"manipulate_account_{account_id}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+        return MANIPULATION_ACTION
+        
+    finally:
+        close_db_session(db)
+
 
