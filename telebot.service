@@ -1,0 +1,33 @@
+[Unit]
+Description=Telegram Account Selling Bot
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/teleaccount-bot
+EnvironmentFile=/etc/telegram-bot/.env
+
+# Use Python 3.11
+ExecStart=/usr/bin/python3 /home/ubuntu/teleaccount-bot/real_main.py
+
+# Restart policy
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=telebot
+
+# Resource limits
+MemoryLimit=512M
+CPUQuota=50%
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
