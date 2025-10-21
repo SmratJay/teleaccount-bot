@@ -50,18 +50,16 @@ async def show_real_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         db = get_db_session()
         try:
+            # Load user's language from database
+            from utils.helpers import load_user_language
+            load_user_language(context, user.id)
+            
             db_user = UserService.get_user_by_telegram_id(db, user.id)
             reply_markup = InlineKeyboardMarkup([])
             if not db_user:
                 logger.error(f"User {user.id} not found in database during main menu display")
                 message_text = "⚠️ **User not found. Please restart with /start**"
             else:
-                # Load user's language from database and set in context
-                if db_user.language_code:
-                    from services.translation_service import translation_service
-                    translation_service.set_user_language(context, db_user.language_code)
-                    logger.info(f"Loaded language {db_user.language_code} for user {user.id}")
-                
                 username_display = f"@{user.username}" if user.username else f"User {user.id}"
                 balance = db_user.balance if hasattr(db_user, 'balance') else 0.00
                 is_admin = bool(getattr(db_user, 'is_admin', False))
@@ -119,6 +117,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     """Central router for button callbacks."""
     query = update.callback_query
     await query.answer()
+    
+    # Load user's language from database FIRST - ensures language persists everywhere
+    from utils.helpers import load_user_language
+    load_user_language(context, update.effective_user.id)
     
     # Check user verification status first
     db = get_db_session()

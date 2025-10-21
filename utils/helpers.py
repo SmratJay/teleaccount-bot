@@ -271,3 +271,29 @@ def is_leader(user_id: int) -> bool:
         return False
     finally:
         close_db_session(db)
+
+
+def load_user_language(context, user_id: int) -> str:
+    """Load user's language from database and set in context. Returns the language code."""
+    from database import get_db_session, close_db_session
+    from database.operations import UserService
+    from services.translation_service import translation_service
+    
+    db = get_db_session()
+    try:
+        user = UserService.get_user_by_telegram_id(db, user_id)
+        if user and user.language_code:
+            # Set language in context for this session
+            translation_service.set_user_language(context, user.language_code)
+            logger.debug(f"Loaded language {user.language_code} for user {user_id}")
+            return user.language_code
+        else:
+            # Default to English
+            translation_service.set_user_language(context, 'en')
+            return 'en'
+    except Exception as e:
+        logger.error(f"Error loading user language: {e}")
+        translation_service.set_user_language(context, 'en')
+        return 'en'
+    finally:
+        close_db_session(db)

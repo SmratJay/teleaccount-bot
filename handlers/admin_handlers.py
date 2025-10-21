@@ -24,6 +24,10 @@ async def handle_admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Main admin panel with all specified features."""
     user = update.effective_user
     
+    # Load user's language from database
+    from utils.helpers import load_user_language
+    load_user_language(context, user.id)
+    
     # Check if user is admin
     if not is_admin(user.id):
         await update.callback_query.answer("❌ Access denied.", show_alert=True)
