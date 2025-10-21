@@ -846,6 +846,7 @@ def setup_admin_handlers(application) -> None:
     application.add_handler(CallbackQueryHandler(handle_proxy_health_check, pattern='^proxy_health_check$'))
     application.add_handler(CallbackQueryHandler(handle_view_proxy_pool, pattern='^view_proxy_pool$'))
     application.add_handler(CallbackQueryHandler(handle_refresh_proxy_sources, pattern='^refresh_proxy_sources$'))
+    application.add_handler(CallbackQueryHandler(handle_clean_free_proxies, pattern='^clean_free_proxies$'))
 
     logger.info("Admin handlers set up successfully")# Additional handler functions will be implemented...
 async def handle_field_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -961,6 +962,7 @@ async def handle_admin_proxy_panel(update: Update, context: ContextTypes.DEFAULT
         [InlineKeyboardButton('🔬 Health Check', callback_data='proxy_health_check')],
         [InlineKeyboardButton('📊 View Proxy Pool', callback_data='view_proxy_pool')],
         [InlineKeyboardButton('➕ Refresh from Sources', callback_data='refresh_proxy_sources')],
+        [InlineKeyboardButton('🧹 Clean Free Proxies', callback_data='clean_free_proxies')],
         [InlineKeyboardButton('🔙 Back to Admin', callback_data='admin_panel')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1073,6 +1075,54 @@ async def handle_refresh_proxy_sources(update: Update, context: ContextTypes.DEF
     except Exception as e:
         logger.error(f"Refresh proxy sources failed: {e}")
         await query.edit_message_text(f"❌ **Refresh Failed**\n\nError: {str(e)}", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔙 Back', callback_data='admin_proxy')]]))
+
+
+async def handle_clean_free_proxies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Remove all free proxies (non-WebShare) from the database."""
+    query = update.callback_query
+    await query.answer()
+    
+    await query.edit_message_text("🧹 **Cleaning Free Proxies...**\n\nRemoving all non-WebShare proxies...", parse_mode='Markdown')
+    
+    try:
+        from database import get_db_session, close_db_session
+        from database.operations import ProxyService
+        
+        db = get_db_session()
+        try:
+            # Get stats before cleanup
+            before_stats = ProxyService.get_proxy_stats(db)
+            before_total = before_stats.get('total_proxies', 0)
+            
+            # Remove free proxies
+            removed_count = ProxyService.remove_free_proxies(db)
+            
+            # Get stats after cleanup
+            after_stats = ProxyService.get_proxy_stats(db)
+            after_total = after_stats.get('total_proxies', 0)
+            
+            msg = (
+                "✅ **Free Proxies Cleaned**\n\n"
+                f"**Removed:** {removed_count} free proxies\n"
+                f"**Before:** {before_total} total proxies\n"
+                f"**After:** {after_total} total proxies\n\n"
+                f"**Remaining:** Only premium WebShare.io proxies\n\n"
+                "ℹ️ Free proxy sources are now disabled by default.\n"
+                "Only WebShare.io proxies will be fetched during auto-refresh."
+            )
+            
+            await query.edit_message_text(msg, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔙 Back', callback_data='admin_proxy')]]))
+            
+        finally:
+            close_db_session(db)
+            
+    except Exception as e:
+        logger.error(f"Clean free proxies failed: {e}")
+        await query.edit_message_text(
+            f"❌ **Cleanup Failed**\n\nError: {str(e)}", 
+            parse_mode='Markdown', 
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔙 Back', callback_data='admin_proxy')]])
+        )
 
 # ----------------------------------------------------------------------
 
