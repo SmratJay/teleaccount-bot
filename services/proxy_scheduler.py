@@ -59,8 +59,8 @@ class ProxyRefreshScheduler:
                     results['webshare']['error'] = str(e)
                     logger.error(f"❌ WebShare refresh failed: {e}")
             
-            # Check free sources
-            free_sources_enabled = os.getenv('FREE_PROXY_SOURCES_ENABLED', 'true').lower() == 'true'
+            # Check free sources (DISABLED by default - only use premium WebShare proxies)
+            free_sources_enabled = os.getenv('FREE_PROXY_SOURCES_ENABLED', 'false').lower() == 'true'
             
             if free_sources_enabled:
                 try:
