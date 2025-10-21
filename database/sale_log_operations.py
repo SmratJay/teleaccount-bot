@@ -73,7 +73,7 @@ class SaleLogService:
     def update_sale_log_status(
         db: Session,
         sale_log_id: int,
-        new_status: SaleLogStatus,
+        new_status: str,
         admin_id: Optional[int] = None,
         notes: Optional[str] = None,
         rejection_reason: Optional[str] = None,
@@ -81,26 +81,19 @@ class SaleLogService:
         """Core updater used by approve/reject flows.
 
         Returns a dict with at least {'success': bool, ...} like other services.
+        Status values: 'PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED'
         """
         try:
-            sale_log = db.query(AccountSaleLog).filter(AccountSaleLog.id == sale_log_id).first()
-            if not sale_log:
-                return {'success': False, 'error': 'not_found', 'message': 'Sale log not found'}
+            sale = db.query(AccountSale).filter(AccountSale.id == sale_log_id).first()
+            if not sale:
+                return {'success': False, 'error': 'not_found', 'message': 'Sale not found'}
 
-            # Prevent approving frozen accounts
-            if new_status == SaleLogStatus.ADMIN_APPROVED and sale_log.account_is_frozen:
-                return {'success': False, 'error': 'account_frozen', 'message': 'Account is frozen'}
-
-            old_status = sale_log.status
-            sale_log.status = new_status
-            sale_log.reviewed_by_admin_id = admin_id
-            sale_log.admin_action_notes = notes
-            sale_log.admin_action_timestamp = datetime.utcnow()
-            if new_status == SaleLogStatus.ADMIN_REJECTED and rejection_reason:
-                sale_log.rejection_reason = rejection_reason
-            if new_status in (SaleLogStatus.COMPLETED, SaleLogStatus.ADMIN_APPROVED):
-                sale_log.sale_completed_at = datetime.utcnow()
-            sale_log.updated_at = datetime.utcnow()
+            old_status = sale.status
+            sale.status = new_status
+            
+            # Set completion time for completed/approved sales
+            if new_status in ('COMPLETED', 'IN_PROGRESS'):
+                sale.sale_completed_at = datetime.utcnow()
 
             # Get admin info for logging
             admin = db.query(User).filter(User.id == admin_id).first() if admin_id else None
@@ -110,13 +103,13 @@ class SaleLogService:
             try:
                 ActivityLogService.log_action(
                     db=db,
-                    user_id=admin_id or sale_log.seller_id,
-                    action_type=f"SALE_LOG_{new_status.name}",
-                    description=f"Sale log {sale_log_id} status changed from {getattr(old_status, 'name', str(old_status))} to {new_status.name} by {admin_name}",
+                    user_id=admin_id or sale.seller_id,
+                    action_type=f"SALE_{new_status}",
+                    description=f"Sale {sale_log_id} status changed from {old_status} to {new_status} by {admin_name}",
                     extra_data=json.dumps({
-                        'sale_log_id': sale_log_id,
-                        'old_status': getattr(old_status, 'name', str(old_status)),
-                        'new_status': new_status.name,
+                        'sale_id': sale_log_id,
+                        'old_status': old_status,
+                        'new_status': new_status,
                         'admin_id': admin_id,
                         'admin_name': admin_name,
                         'notes': notes,
@@ -125,12 +118,12 @@ class SaleLogService:
                 )
             except Exception:
                 # Activity logging should not block the operation
-                logger.exception("ActivityLogService logging failed for sale log update")
+                logger.exception("ActivityLogService logging failed for sale update")
 
             db.commit()
 
-            logger.info(f"Sale log {sale_log_id} updated from {old_status} to {new_status} by admin {admin_id}")
-            return {'success': True, 'sale_log_id': sale_log_id, 'old_status': getattr(old_status, 'name', str(old_status)), 'new_status': new_status.name}
+            logger.info(f"Sale {sale_log_id} updated from {old_status} to {new_status} by admin {admin_id}")
+            return {'success': True, 'sale_log_id': sale_log_id, 'old_status': old_status, 'new_status': new_status}
 
         except Exception as e:
             logger.exception(f"update_sale_log_status error for {sale_log_id}: {e}")
@@ -141,37 +134,37 @@ class SaleLogService:
             return {'success': False, 'error': 'exception', 'message': str(e)}
 
     def approve_sale_log(self, db: Session, sale_log_id: int, admin_id: int, notes: str = "") -> Dict[str, Any]:
-        """Approve a sale log after performing freeze checks."""
-        return self.update_sale_log_status(db, sale_log_id, SaleLogStatus.ADMIN_APPROVED, admin_id=admin_id, notes=notes)
+        """Approve a sale log."""
+        return self.update_sale_log_status(db, sale_log_id, 'IN_PROGRESS', admin_id=admin_id, notes=notes)
 
     def reject_sale_log(self, db: Session, sale_log_id: int, admin_id: int, rejection_reason: str) -> bool:
         """Reject a sale log. Returns True on success, False otherwise."""
-        result = self.update_sale_log_status(db, sale_log_id, SaleLogStatus.ADMIN_REJECTED, admin_id=admin_id, notes=None, rejection_reason=rejection_reason)
+        result = self.update_sale_log_status(db, sale_log_id, 'FAILED', admin_id=admin_id, notes=None, rejection_reason=rejection_reason)
         return bool(result.get('success'))
 
     def search_sale_logs(
         self,
         db: Session,
         search_query: Optional[str] = None,
-        status: Optional[SaleLogStatus] = None,
+        status: Optional[str] = None,
         is_frozen: Optional[bool] = None,
         limit: int = 50,
-    ) -> List[AccountSaleLog]:
+    ) -> List[AccountSale]:
+        """Search sale logs with filters."""
         try:
-            query = db.query(AccountSaleLog)
-            if search_query:
-                # simple text search across few columns
-                like_q = f"%{search_query}%"
-                query = query.filter(
-                    (AccountSaleLog.account_phone.ilike(like_q)) |
-                    (AccountSaleLog.seller_username.ilike(like_q)) |
-                    (AccountSaleLog.seller_name.ilike(like_q))
-                )
+            from database.models import TelegramAccount
+            query = db.query(AccountSale)
+            
+            # Apply status filter
             if status:
-                query = query.filter(AccountSaleLog.status == status)
+                query = query.filter(AccountSale.status == status)
+            
+            # For frozen filter, join with TelegramAccount
             if is_frozen is not None:
-                query = query.filter(AccountSaleLog.account_is_frozen == is_frozen)
-            return query.order_by(AccountSaleLog.created_at.desc()).limit(limit).all()
+                query = query.join(TelegramAccount, AccountSale.account_id == TelegramAccount.id)
+                query = query.filter(TelegramAccount.is_frozen == is_frozen)
+            
+            return query.order_by(AccountSale.created_at.desc()).limit(limit).all()
         except Exception as e:
             logger.exception(f"search_sale_logs error: {e}")
             return []

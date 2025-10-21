@@ -8,7 +8,7 @@ from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler, Mes
 
 from database import get_db_session, close_db_session
 from database.operations import UserService, SystemSettingsService, ActivityLogService
-from database.models import User, Withdrawal, AccountSaleLog, UserStatus
+from database.models import User, Withdrawal, AccountSale, UserStatus
 from services.translation_service import translation_service
 
 logger = logging.getLogger(__name__)
@@ -1394,14 +1394,18 @@ async def handle_approve_sale_action(update: Update, context: ContextTypes.DEFAU
                 from utils.notification_service import get_notification_service
                 notification_service = get_notification_service()
                 if notification_service:
-                    sale_log = db.query(AccountSaleLog).filter(AccountSaleLog.id == sale_log_id).first()
+                    sale_log = db.query(AccountSale).filter(AccountSale.id == sale_log_id).first()
                     if sale_log:
-                        await notification_service.notify_sale_approved(
-                            user_telegram_id=sale_log.seller_telegram_id,
-                            phone_number=sale_log.account_phone,
-                            sale_price=sale_log.sale_price,
-                            admin_notes=result.get('notes')
-                        )
+                        # Get seller info
+                        seller = db.query(User).filter(User.id == sale_log.seller_id).first()
+                        seller_telegram_id = seller.telegram_user_id if seller else None
+                        if seller_telegram_id:
+                            await notification_service.notify_sale_approved(
+                                user_telegram_id=seller_telegram_id,
+                                phone_number="account",
+                                sale_price=sale_log.sale_price,
+                                admin_notes=result.get('notes')
+                            )
             except Exception as e:
                 logger.error(f"Error sending approval notification: {e}")
             
@@ -1482,9 +1486,9 @@ async def handle_reject_sale_action(update: Update, context: ContextTypes.DEFAUL
     db = get_db_session()
     try:
         # Get sale log details before rejection
-        sale_log = db.query(AccountSaleLog).filter(AccountSaleLog.id == sale_log_id).first()
+        sale_log = db.query(AccountSale).filter(AccountSale.id == sale_log_id).first()
         if not sale_log:
-            await query.answer('❌ Sale log not found.', show_alert=True)
+            await query.answer('❌ Sale not found.', show_alert=True)
             return
         
         # Get admin user
@@ -1509,12 +1513,16 @@ async def handle_reject_sale_action(update: Update, context: ContextTypes.DEFAUL
                 from utils.notification_service import get_notification_service
                 notification_service = get_notification_service()
                 if notification_service:
-                    await notification_service.notify_sale_rejected(
-                        user_telegram_id=sale_log.seller_telegram_id,
-                        phone_number=sale_log.account_phone,
-                        rejection_reason='Admin review - does not meet requirements',
-                        admin_notes=rejection_reason
-                    )
+                    # Get seller info
+                    seller = db.query(User).filter(User.id == sale_log.seller_id).first()
+                    seller_telegram_id = seller.telegram_user_id if seller else None
+                    if seller_telegram_id:
+                        await notification_service.notify_sale_rejected(
+                            user_telegram_id=seller_telegram_id,
+                            phone_number="account",
+                            rejection_reason='Admin review - does not meet requirements',
+                            admin_notes=rejection_reason
+                        )
             except Exception as e:
                 logger.error(f"Error sending rejection notification: {e}")
             
