@@ -8,6 +8,32 @@ A comprehensive Telegram bot platform for selling Telegram accounts with advance
 
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes
+
+**October 21, 2025 - Reports & Logs + System Settings Implementation:**
+- Removed "Activity Tracker" button from admin panel (redundant with Reports & Logs)
+- Implemented comprehensive **Reports & Logs** system with 5 modules:
+  - Main Dashboard: Real-time statistics from database (users, accounts, sales, revenue)
+  - Activity Logs: Recent user actions and system events
+  - Sales Report: Top sellers, recent sales, performance metrics
+  - User Report: User statistics, balance distribution, language breakdown
+  - Revenue Report: Revenue by time period, average sale price, performance metrics
+- Implemented **System Settings** panel with 4 categories:
+  - Bot Configuration: Verification settings, CAPTCHA, channel join, freeze duration, daily limits
+  - Financial Settings: Minimum withdrawal, commission rate, price limits
+  - Security & Access: Admin/leader management, login attempts, session timeout
+  - System Maintenance: Database cleanup, statistics, optimization tools
+- All features use real-time database queries with zero hardcoded data
+- Settings stored in `system_settings` table for persistence across sessions
+- Added `is_admin()` and `is_leader()` utility functions to utils/helpers.py
+- All handlers fully wired and tested
+
+**October 21, 2025 - Proxy System Cleanup:**
+- Disabled free proxy sources by default (FREE_PROXY_SOURCES_ENABLED = 'false')
+- Removed 579 free proxies from database
+- Added admin control to clean free proxies
+- WebShare.io now the primary proxy source
+
 ## System Architecture
 
 ### Core Technology Stack

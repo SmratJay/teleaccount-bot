@@ -711,9 +711,9 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     return ConversationHandler.END
 
 def is_admin(user_id: int) -> bool:
-    """Check if user is an admin."""
-    ADMIN_IDS = [6733908384]  # Your admin ID
-    return user_id in ADMIN_IDS
+    """Check if user is an admin based on environment variables."""
+    from utils.helpers import is_admin as check_admin
+    return check_admin(user_id)
 
 def setup_admin_handlers(application) -> None:
     """Set up admin handlers."""

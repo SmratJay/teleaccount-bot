@@ -240,3 +240,34 @@ def get_session_file_path(phone_number: str) -> str:
     session_file = f"{clean_phone}.session"
     
     return os.path.join(sessions_dir, session_file)
+
+
+def is_admin(user_id: int) -> bool:
+    """Check if user is an admin based on environment variables and database."""
+    admin_ids_str = os.getenv('ADMIN_USER_ID', os.getenv('ADMIN_TELEGRAM_ID', ''))
+    
+    if not admin_ids_str:
+        return False
+    
+    try:
+        admin_ids = [int(x.strip()) for x in admin_ids_str.split(',') if x.strip()]
+        return user_id in admin_ids
+    except (ValueError, AttributeError):
+        logger.error(f"Invalid ADMIN_USER_ID format: {admin_ids_str}")
+        return False
+
+
+def is_leader(user_id: int) -> bool:
+    """Check if user is a leader."""
+    from database import get_db_session, close_db_session
+    from database.operations import UserService
+    
+    db = get_db_session()
+    try:
+        user = UserService.get_user_by_telegram_id(db, user_id)
+        return user and user.is_leader
+    except Exception as e:
+        logger.error(f"Error checking leader status: {e}")
+        return False
+    finally:
+        close_db_session(db)
