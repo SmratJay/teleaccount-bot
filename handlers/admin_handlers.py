@@ -839,6 +839,13 @@ def setup_admin_handlers(application) -> None:
         conversation_timeout=600  # 10 minutes timeout for account operations
     )
     application.add_handler(account_manip_conv)
+    
+    # Proxy/IP Configuration handlers
+    application.add_handler(CallbackQueryHandler(handle_admin_proxy_panel, pattern='^admin_proxy$'))
+    application.add_handler(CallbackQueryHandler(handle_force_proxy_rotation, pattern='^force_proxy_rotation$'))
+    application.add_handler(CallbackQueryHandler(handle_proxy_health_check, pattern='^proxy_health_check$'))
+    application.add_handler(CallbackQueryHandler(handle_view_proxy_pool, pattern='^view_proxy_pool$'))
+    application.add_handler(CallbackQueryHandler(handle_refresh_proxy_sources, pattern='^refresh_proxy_sources$'))
 
     logger.info("Admin handlers set up successfully")# Additional handler functions will be implemented...
 async def handle_field_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -952,6 +959,8 @@ async def handle_admin_proxy_panel(update: Update, context: ContextTypes.DEFAULT
     keyboard = [
         [InlineKeyboardButton('🔄 Force Proxy Rotation', callback_data='force_proxy_rotation')],
         [InlineKeyboardButton('🔬 Health Check', callback_data='proxy_health_check')],
+        [InlineKeyboardButton('📊 View Proxy Pool', callback_data='view_proxy_pool')],
+        [InlineKeyboardButton('➕ Refresh from Sources', callback_data='refresh_proxy_sources')],
         [InlineKeyboardButton('🔙 Back to Admin', callback_data='admin_panel')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -991,6 +1000,79 @@ async def handle_proxy_health_check(update: Update, context: ContextTypes.DEFAUL
     )
 
     await query.edit_message_text(msg, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔙 Back', callback_data='admin_proxy')]]))
+
+
+async def handle_view_proxy_pool(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """View all proxies in the pool with details."""
+    query = update.callback_query
+    await query.answer()
+    
+    from database import get_db_session, close_db_session
+    from database.operations import ProxyService
+    
+    db = get_db_session()
+    try:
+        proxies = ProxyService.get_all_proxies(db, include_inactive=True)
+        
+        if not proxies:
+            msg = "⚠️ **No Proxies in Pool**\n\nThe proxy pool is currently empty.\n\nUse 'Refresh from Sources' to fetch new proxies."
+        else:
+            active_count = sum(1 for p in proxies if p.is_active)
+            msg = f"📊 **Proxy Pool Details**\n\nTotal: {len(proxies)} | Active: {active_count} | Inactive: {len(proxies) - active_count}\n\n"
+            
+            # Show first 10 proxies
+            for proxy in proxies[:10]:
+                status = "✅" if proxy.is_active else "❌"
+                msg += f"{status} **{proxy.ip_address}:{proxy.port}**\n"
+                msg += f"   └ {proxy.country_code or 'Unknown'} | {proxy.provider or 'free'} | Score: {proxy.reputation_score}\n"
+            
+            if len(proxies) > 10:
+                msg += f"\n_...and {len(proxies) - 10} more proxies_"
+        
+        await query.edit_message_text(msg, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔙 Back', callback_data='admin_proxy')]]))
+    finally:
+        close_db_session(db)
+
+
+async def handle_refresh_proxy_sources(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Refresh proxy pool from all sources."""
+    query = update.callback_query
+    await query.answer()
+    
+    await query.edit_message_text("🔄 **Refreshing Proxy Pool...**\n\nFetching from all enabled sources...", parse_mode='Markdown')
+    
+    try:
+        from services.proxy_scheduler import refresh_proxies_now
+        results = await refresh_proxies_now()
+        
+        webshare = results.get('webshare', {})
+        free_sources = results.get('free_sources', {})
+        cleanup = results.get('cleanup', {})
+        
+        msg = "✅ **Proxy Refresh Complete**\n\n"
+        
+        if webshare.get('enabled'):
+            status = "✅" if webshare.get('success') else "❌"
+            msg += f"{status} **WebShare.io**: {webshare.get('count', 0)} proxies\n"
+        
+        if free_sources.get('enabled'):
+            status = "✅" if free_sources.get('success') else "❌"
+            msg += f"{status} **Free Sources**: {free_sources.get('count', 0)} proxies\n"
+        
+        msg += f"\n🧹 Cleanup: {cleanup.get('removed', 0)} old proxies removed\n"
+        
+        from database import get_db_session, close_db_session
+        from database.operations import ProxyService
+        db = get_db_session()
+        stats = ProxyService.get_proxy_stats(db)
+        close_db_session(db)
+        
+        msg += f"\n📊 **Current Pool**: {stats.get('total_proxies', 0)} total | {stats.get('active_proxies', 0)} active"
+        
+        await query.edit_message_text(msg, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔙 Back', callback_data='admin_proxy')]]))
+    except Exception as e:
+        logger.error(f"Refresh proxy sources failed: {e}")
+        await query.edit_message_text(f"❌ **Refresh Failed**\n\nError: {str(e)}", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔙 Back', callback_data='admin_proxy')]]))
 
 # ----------------------------------------------------------------------
 
