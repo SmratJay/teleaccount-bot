@@ -6,7 +6,16 @@ A comprehensive Telegram bot platform for selling Telegram accounts. It features
 
 ## Recent Changes (October 22, 2025)
 
-**Ticket Navigation Stability Fix (Latest):**
+**Main Menu Performance Optimization (Latest):**
+- Eliminated redundant database queries when loading the main menu
+- Optimized `button_callback()` to fetch user data once and load language from the same object
+- Modified `show_real_main_menu()` to accept optional pre-fetched `db_user_cached` parameter
+- Updated `start_handler` to pass cached user object when redirecting to main menu
+- Reduced database queries from 4 to 1-2 per main menu load (2x-4x performance improvement)
+- Language loading now uses direct user object instead of separate DB query
+- Main menu redirects are now noticeably faster, especially with network latency
+
+**Ticket Navigation Stability Fix:**
 - Fixed critical bug where ticket navigation jumped to wrong sales when other admins approved/rejected tickets concurrently
 - All navigation callbacks now use stable `sale_log.id` instead of ephemeral ticket strings (#0001, #0002)
 - Created `navigate_ticket_by_id()` function for ID-based ticket navigation

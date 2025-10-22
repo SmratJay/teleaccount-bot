@@ -41,23 +41,36 @@ from handlers.withdrawal_flow import (
 )
 
 
-async def show_real_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Display the main menu after successful verification."""
+async def show_real_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, db_user_cached=None) -> None:
+    """Display the main menu after successful verification.
+    
+    Args:
+        update: Telegram update object
+        context: Bot context
+        db_user_cached: Optional pre-fetched user object (optimization to avoid redundant DB query)
+    """
     user = update.effective_user
     if update.callback_query:
         await update.callback_query.answer()
     
     db = None
+    db_needs_close = False
     try:
-        db = get_db_session()
+        # Only fetch user from DB if not provided (optimization)
+        if db_user_cached is None:
+            db = get_db_session()
+            db_needs_close = True
+            db_user = UserService.get_user_by_telegram_id(db, user.id)
+        else:
+            db_user = db_user_cached
         
-        from utils.helpers import load_user_language
-        try:
-            load_user_language(context, user.id)
-        except Exception as lang_error:
-            logger.warning(f"Could not load user language: {lang_error}")
-        
-        db_user = UserService.get_user_by_telegram_id(db, user.id)
+        # Load language directly from fetched user (avoid duplicate query)
+        if db_user and db_user.language_code:
+            try:
+                from services.translation_service import translation_service
+                translation_service.set_user_language(context, db_user.language_code)
+            except Exception as lang_error:
+                logger.warning(f"Could not set user language: {lang_error}")
         
         if not db_user:
             logger.error(f"User {user.id} not found in database during main menu display")
@@ -151,7 +164,7 @@ Something went wrong. Please try restarting the bot.
         except Exception as fallback_error:
             logger.error(f"Failed to show error message: {fallback_error}")
     finally:
-        if db:
+        if db and db_needs_close:
             close_db_session(db)
 
 
@@ -160,14 +173,19 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     query = update.callback_query
     await query.answer()
     
-    # Load user's language from database FIRST - ensures language persists everywhere
-    from utils.helpers import load_user_language
-    load_user_language(context, update.effective_user.id)
-    
-    # Check user verification status first
+    # Fetch user once and load language from the same object (optimization)
     db = get_db_session()
     try:
         db_user = UserService.get_user_by_telegram_id(db, update.effective_user.id)
+        
+        # Load language directly from user object (avoid separate DB query)
+        if db_user and db_user.language_code:
+            try:
+                from services.translation_service import translation_service
+                translation_service.set_user_language(context, db_user.language_code)
+            except Exception as lang_error:
+                logger.warning(f"Could not set user language: {lang_error}")
+        
         user_verified = bool(
             getattr(db_user, 'verification_completed', False)
             or getattr(db_user, 'is_verified', False)
@@ -291,8 +309,8 @@ def setup_real_handlers(application) -> None:
                         context.user_data['verified'] = True
                         db.commit()
                         
-                        # Show main menu directly
-                        await show_real_main_menu(update, context)
+                        # Show main menu directly (pass cached user to avoid redundant query)
+                        await show_real_main_menu(update, context, db_user_cached=db_user)
                         return ConversationHandler.END
                     else:
                         logger.info(f"⏰ CAPTCHA expired for user {user.id} ({days_since_verification} days old)")
@@ -307,8 +325,8 @@ def setup_real_handlers(application) -> None:
                     context.user_data['verified'] = True
                     db.commit()
                     
-                    # Show main menu directly
-                    await show_real_main_menu(update, context)
+                    # Show main menu directly (pass cached user to avoid redundant query)
+                    await show_real_main_menu(update, context, db_user_cached=db_user)
                     return ConversationHandler.END
                 
                 # CAPTCHA not verified or expired - start verification
