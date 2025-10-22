@@ -297,6 +297,20 @@ def setup_real_handlers(application) -> None:
                     else:
                         logger.info(f"⏰ CAPTCHA expired for user {user.id} ({days_since_verification} days old)")
                 
+                # Fallback: If user was verified before captcha_verified_at column existed
+                # Backfill the timestamp and skip verification
+                elif getattr(db_user, 'verification_completed', False) or getattr(db_user, 'is_verified', False):
+                    logger.info(f"🔧 Backfilling CAPTCHA timestamp for previously verified user {user.id}")
+                    db_user.captcha_verified_at = datetime.now(timezone.utc)
+                    db_user.captcha_completed = True
+                    db_user.verification_completed = True
+                    context.user_data['verified'] = True
+                    db.commit()
+                    
+                    # Show main menu directly
+                    await show_real_main_menu(update, context)
+                    return ConversationHandler.END
+                
                 # CAPTCHA not verified or expired - start verification
                 logger.info(f"🔒 Starting verification for user {user.id}")
                 db_user.captcha_completed = False
