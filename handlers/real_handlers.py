@@ -417,9 +417,11 @@ def setup_real_handlers(application) -> None:
     try:
         from handlers.admin_handlers import setup_admin_handlers
         setup_admin_handlers(application)
-        logger.info("✅ Admin handlers registered")
+        logger.info("✅ Admin handlers registered successfully")
     except Exception as e:
-        logger.error(f"Failed to load admin handlers: {e}")
+        logger.error(f"❌ CRITICAL: Failed to load admin handlers: {e}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
     
     # ========================================
     # CALLBACK QUERY HANDLERS

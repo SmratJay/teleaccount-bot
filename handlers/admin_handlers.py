@@ -1233,82 +1233,94 @@ def setup_admin_handlers(application) -> None:
     application.add_handler(CallbackQueryHandler(handle_refresh_proxy_sources, pattern='^refresh_proxy_sources$'))
     application.add_handler(CallbackQueryHandler(handle_clean_free_proxies, pattern='^clean_free_proxies$'))
     
-    # Reports & Logs handlers
-    from handlers.reports_logs_handlers import (
-        handle_admin_reports,
-        handle_view_user_report,
-        handle_download_userids,
-        handle_view_session_details,
-        start_session_download,
-        process_session_username,
-        cancel_session_download,
-        SESSION_USERNAME_INPUT
-    )
-    from telegram.ext import ConversationHandler, MessageHandler
-    from telegram import ext
+    # Reports & Logs handlers - wrapped in try-except to prevent total failure
+    try:
+        from handlers.reports_logs_handlers import (
+            handle_admin_reports,
+            handle_view_user_report,
+            handle_download_userids,
+            handle_view_session_details,
+            start_session_download,
+            process_session_username,
+            cancel_session_download,
+            SESSION_USERNAME_INPUT
+        )
+        from telegram.ext import ConversationHandler, MessageHandler
+        from telegram import ext
+        
+        application.add_handler(CallbackQueryHandler(handle_admin_reports, pattern='^admin_reports$'))
+        application.add_handler(CallbackQueryHandler(handle_view_user_report, pattern='^view_user_report$'))
+        application.add_handler(CallbackQueryHandler(handle_download_userids, pattern='^download_userids$'))
+        application.add_handler(CallbackQueryHandler(handle_view_session_details, pattern='^view_session_details$'))
+        
+        # Session download conversation handler
+        session_download_conv = ConversationHandler(
+            entry_points=[
+                CallbackQueryHandler(start_session_download, pattern='^download_session_files$')
+            ],
+            states={
+                SESSION_USERNAME_INPUT: [
+                    MessageHandler(ext.filters.TEXT & ~ext.filters.COMMAND, process_session_username)
+                ]
+            },
+            fallbacks=[
+                CallbackQueryHandler(handle_view_session_details, pattern='^view_session_details$'),
+                CommandHandler('cancel', cancel_session_download)
+            ],
+            name="session_download_conversation",
+            per_user=True,
+            per_chat=True,
+            allow_reentry=True,
+            conversation_timeout=300
+        )
+        application.add_handler(session_download_conv)
+        logger.info("✅ Reports & Logs handlers loaded")
+    except Exception as e:
+        logger.error(f"⚠️ Failed to load Reports & Logs handlers: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
     
-    application.add_handler(CallbackQueryHandler(handle_admin_reports, pattern='^admin_reports$'))
-    application.add_handler(CallbackQueryHandler(handle_view_user_report, pattern='^view_user_report$'))
-    application.add_handler(CallbackQueryHandler(handle_download_userids, pattern='^download_userids$'))
-    application.add_handler(CallbackQueryHandler(handle_view_session_details, pattern='^view_session_details$'))
-    
-    # Session download conversation handler
-    session_download_conv = ConversationHandler(
-        entry_points=[
-            CallbackQueryHandler(start_session_download, pattern='^download_session_files$')
-        ],
-        states={
-            SESSION_USERNAME_INPUT: [
-                MessageHandler(ext.filters.TEXT & ~ext.filters.COMMAND, process_session_username)
-            ]
-        },
-        fallbacks=[
-            CallbackQueryHandler(handle_view_session_details, pattern='^view_session_details$'),
-            CommandHandler('cancel', cancel_session_download)
-        ],
-        name="session_download_conversation",
-        per_user=True,
-        per_chat=True,
-        allow_reentry=True,
-        conversation_timeout=300
-    )
-    application.add_handler(session_download_conv)
-    
-    # System Settings handlers
-    from handlers.system_settings_handlers import (
-        handle_admin_settings,
-        handle_settings_bot_config,
-        handle_settings_financial,
-        handle_settings_security,
-        handle_settings_maintenance,
-        handle_toggle_verification,
-        handle_toggle_captcha,
-        handle_toggle_channel_verification,
-        handle_clear_old_logs,
-        handle_view_db_stats
-    )
-    from handlers.system_settings_handlers_additional import (
-        handle_view_all_admins,
-        handle_view_all_leaders,
-        get_add_admin_conversation,
-        get_remove_admin_conversation
-    )
-    application.add_handler(CallbackQueryHandler(handle_admin_settings, pattern='^admin_settings$'))
-    application.add_handler(CallbackQueryHandler(handle_settings_bot_config, pattern='^settings_bot_config$'))
-    application.add_handler(CallbackQueryHandler(handle_settings_financial, pattern='^settings_financial$'))
-    application.add_handler(CallbackQueryHandler(handle_settings_security, pattern='^settings_security$'))
-    application.add_handler(CallbackQueryHandler(handle_settings_maintenance, pattern='^settings_maintenance$'))
-    application.add_handler(CallbackQueryHandler(handle_toggle_verification, pattern='^toggle_verification$'))
-    application.add_handler(CallbackQueryHandler(handle_toggle_captcha, pattern='^toggle_captcha$'))
-    application.add_handler(CallbackQueryHandler(handle_toggle_channel_verification, pattern='^toggle_channel_verification$'))
-    application.add_handler(CallbackQueryHandler(handle_clear_old_logs, pattern='^clear_old_logs$'))
-    application.add_handler(CallbackQueryHandler(handle_view_db_stats, pattern='^view_db_stats$'))
-    application.add_handler(CallbackQueryHandler(handle_view_all_admins, pattern='^view_all_admins$'))
-    application.add_handler(CallbackQueryHandler(handle_view_all_leaders, pattern='^view_all_leaders$'))
-    
-    # Admin management conversations
-    application.add_handler(get_add_admin_conversation())
-    application.add_handler(get_remove_admin_conversation())
+    # System Settings handlers - wrapped in try-except to prevent total failure
+    try:
+        from handlers.system_settings_handlers import (
+            handle_admin_settings,
+            handle_settings_bot_config,
+            handle_settings_financial,
+            handle_settings_security,
+            handle_settings_maintenance,
+            handle_toggle_verification,
+            handle_toggle_captcha,
+            handle_toggle_channel_verification,
+            handle_clear_old_logs,
+            handle_view_db_stats
+        )
+        from handlers.system_settings_handlers_additional import (
+            handle_view_all_admins,
+            handle_view_all_leaders,
+            get_add_admin_conversation,
+            get_remove_admin_conversation
+        )
+        application.add_handler(CallbackQueryHandler(handle_admin_settings, pattern='^admin_settings$'))
+        application.add_handler(CallbackQueryHandler(handle_settings_bot_config, pattern='^settings_bot_config$'))
+        application.add_handler(CallbackQueryHandler(handle_settings_financial, pattern='^settings_financial$'))
+        application.add_handler(CallbackQueryHandler(handle_settings_security, pattern='^settings_security$'))
+        application.add_handler(CallbackQueryHandler(handle_settings_maintenance, pattern='^settings_maintenance$'))
+        application.add_handler(CallbackQueryHandler(handle_toggle_verification, pattern='^toggle_verification$'))
+        application.add_handler(CallbackQueryHandler(handle_toggle_captcha, pattern='^toggle_captcha$'))
+        application.add_handler(CallbackQueryHandler(handle_toggle_channel_verification, pattern='^toggle_channel_verification$'))
+        application.add_handler(CallbackQueryHandler(handle_clear_old_logs, pattern='^clear_old_logs$'))
+        application.add_handler(CallbackQueryHandler(handle_view_db_stats, pattern='^view_db_stats$'))
+        application.add_handler(CallbackQueryHandler(handle_view_all_admins, pattern='^view_all_admins$'))
+        application.add_handler(CallbackQueryHandler(handle_view_all_leaders, pattern='^view_all_leaders$'))
+        
+        # Admin management conversations
+        application.add_handler(get_add_admin_conversation())
+        application.add_handler(get_remove_admin_conversation())
+        logger.info("✅ System Settings handlers loaded")
+    except Exception as e:
+        logger.error(f"⚠️ Failed to load System Settings handlers: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
 
     logger.info("Admin handlers set up successfully")
 
