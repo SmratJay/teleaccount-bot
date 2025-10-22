@@ -1,0 +1,65 @@
+ubuntu@ip-172-31-42-97:~/teleaccount-bot$ ^C
+ubuntu@ip-172-31-42-97:~/teleaccount-bot$ ^C
+ubuntu@ip-172-31-42-97:~/teleaccount-bot$ sudo systemctl status telebot
+● telebot.service - Telegram Account Selling Bot
+     Loaded: loaded (/etc/systemd/system/telebot.service; enabled; preset: enabled)
+     Active: activating (auto-restart) (Result: exit-code) since Wed 2025-10-22 13:36:12 UTC; 8s ago
+    Process: 27074 ExecStart=/usr/bin/python3 /home/ubuntu/teleaccount-bot/real_main.py (code=exited, status=1/FAILURE)
+   Main PID: 27074 (code=exited, status=1/FAILURE)
+        CPU: 103ms
+ubuntu@ip-172-31-42-97:~/teleaccount-bot$ sudi journalctl -u telebot -n 50
+Command 'sudi' not found, did you mean:
+  command 'sudo' from deb sudo (1.9.15p5-3ubuntu5.24.04.1)
+  command 'sudo' from deb sudo-ldap (1.9.15p5-3ubuntu5.24.04.1)
+Try: sudo apt install <deb name>
+ubuntu@ip-172-31-42-97:~/teleaccount-bot$ sudo journalctl -u telebot -n 50
+Oct 22 13:35:52 ip-172-31-42-97 systemd[1]: telebot.service: Main process exited, code=exited, status=1/FAILURE
+Oct 22 13:35:52 ip-172-31-42-97 systemd[1]: telebot.service: Failed with result 'exit-code'.
+Oct 22 13:36:02 ip-172-31-42-97 systemd[1]: telebot.service: Scheduled restart job, restart counter is at 10.
+Oct 22 13:36:02 ip-172-31-42-97 systemd[1]: Started telebot.service - Telegram Account Selling Bot.
+Oct 22 13:36:02 ip-172-31-42-97 telebot[27070]: Traceback (most recent call last):
+Oct 22 13:36:02 ip-172-31-42-97 telebot[27070]:   File "/home/ubuntu/teleaccount-bot/real_main.py", line 8, in <module>
+Oct 22 13:36:02 ip-172-31-42-97 telebot[27070]:     from telegram import Update
+Oct 22 13:36:02 ip-172-31-42-97 telebot[27070]: ImportError: cannot import name 'Update' from 'telegram' (/home/ubuntu/.local/li>
+Oct 22 13:36:02 ip-172-31-42-97 systemd[1]: telebot.service: Main process exited, code=exited, status=1/FAILURE
+Oct 22 13:36:02 ip-172-31-42-97 systemd[1]: telebot.service: Failed with result 'exit-code'.
+Oct 22 13:36:12 ip-172-31-42-97 systemd[1]: telebot.service: Scheduled restart job, restart counter is at 11.
+Oct 22 13:36:12 ip-172-31-42-97 systemd[1]: Started telebot.service - Telegram Account Selling Bot.
+Oct 22 13:36:12 ip-172-31-42-97 telebot[27074]: Traceback (most recent call last):
+Oct 22 13:36:12 ip-172-31-42-97 telebot[27074]:   File "/home/ubuntu/teleaccount-bot/real_main.py", line 8, in <module>
+Oct 22 13:36:12 ip-172-31-42-97 telebot[27074]:     from telegram import Update
+Oct 22 13:36:12 ip-172-31-42-97 telebot[27074]: ImportError: cannot import name 'Update' from 'telegram' (/home/ubuntu/.local/li>
+Oct 22 13:36:12 ip-172-31-42-97 systemd[1]: telebot.service: Main process exited, code=exited, status=1/FAILURE
+Oct 22 13:36:12 ip-172-31-42-97 systemd[1]: telebot.service: Failed with result 'exit-code'.
+Oct 22 13:36:22 ip-172-31-42-97 systemd[1]: telebot.service: Scheduled restart job, restart counter is at 12.
+Oct 22 13:36:22 ip-172-31-42-97 systemd[1]: Started telebot.service - Telegram Account Selling Bot.
+Oct 22 13:36:22 ip-172-31-42-97 telebot[27083]: Traceback (most recent call last):
+Oct 22 13:36:22 ip-172-31-42-97 telebot[27083]:   File "/home/ubuntu/teleaccount-bot/real_main.py", line 8, in <module>
+Oct 22 13:36:22 ip-172-31-42-97 telebot[27083]:     from telegram import Update
+Oct 22 13:36:22 ip-172-31-42-97 telebot[27083]: ImportError: cannot import name 'Update' from 'telegram' (/home/ubuntu/.local/li>
+Oct 22 13:36:22 ip-172-31-42-97 systemd[1]: telebot.service: Main process exited, code=exited, status=1/FAILURE
+Oct 22 13:36:22 ip-172-31-42-97 systemd[1]: telebot.service: Failed with result 'exit-code'.
+Oct 22 13:36:32 ip-172-31-42-97 systemd[1]: telebot.service: Scheduled restart job, restart counter is at 13.
+Oct 22 13:36:32 ip-172-31-42-97 systemd[1]: Started telebot.service - Telegram Account Selling Bot.
+Oct 22 13:36:32 ip-172-31-42-97 telebot[27087]: Traceback (most recent call last):
+Oct 22 13:36:32 ip-172-31-42-97 telebot[27087]:   File "/home/ubuntu/teleaccount-bot/real_main.py", line 8, in <module>
+Oct 22 13:36:32 ip-172-31-42-97 telebot[27087]:     from telegram import Update
+Oct 22 13:36:32 ip-172-31-42-97 telebot[27087]: ImportError: cannot import name 'Update' from 'telegram' (/home/ubuntu/.local/li>
+Oct 22 13:36:33 ip-172-31-42-97 systemd[1]: telebot.service: Main process exited, code=exited, status=1/FAILURE
+Oct 22 13:36:33 ip-172-31-42-97 systemd[1]: telebot.service: Failed with result 'exit-code'.
+Oct 22 13:36:43 ip-172-31-42-97 systemd[1]: telebot.service: Scheduled restart job, restart counter is at 14.
+Oct 22 13:36:43 ip-172-31-42-97 systemd[1]: Started telebot.service - Telegram Account Selling Bot.
+Oct 22 13:36:43 ip-172-31-42-97 telebot[27102]: Traceback (most recent call last):
+Oct 22 13:36:43 ip-172-31-42-97 telebot[27102]:   File "/home/ubuntu/teleaccount-bot/real_main.py", line 8, in <module>
+Oct 22 13:36:43 ip-172-31-42-97 telebot[27102]:     from telegram import Update
+Oct 22 13:36:43 ip-172-31-42-97 telebot[27102]: ImportError: cannot import name 'Update' from 'telegram' (/home/ubuntu/.local/li>
+Oct 22 13:36:43 ip-172-31-42-97 systemd[1]: telebot.service: Main process exited, code=exited, status=1/FAILURE
+Oct 22 13:36:43 ip-172-31-42-97 systemd[1]: telebot.service: Failed with result 'exit-code'.
+Oct 22 13:36:53 ip-172-31-42-97 systemd[1]: telebot.service: Scheduled restart job, restart counter is at 15.
+Oct 22 13:36:53 ip-172-31-42-97 systemd[1]: Started telebot.service - Telegram Account Selling Bot.
+Oct 22 13:36:53 ip-172-31-42-97 telebot[27107]: Traceback (most recent call last):
+Oct 22 13:36:53 ip-172-31-42-97 telebot[27107]:   File "/home/ubuntu/teleaccount-bot/real_main.py", line 8, in <module>
+Oct 22 13:36:53 ip-172-31-42-97 telebot[27107]:     from telegram import Update
+Oct 22 13:36:53 ip-172-31-42-97 telebot[27107]: ImportError: cannot import name 'Update' from 'telegram' (/home/ubuntu/.local/li>
+Oct 22 13:36:53 ip-172-31-42-97 systemd[1]: telebot.service: Main process exited, code=exited, status=1/FAILURE
+Oct 22 13:36:53 ip-172-31-42-97 systemd[1]: telebot.service: Failed with result 'exit-code'.
