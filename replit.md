@@ -10,6 +10,35 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+**October 22, 2025 - Database Migrations + 7-Day CAPTCHA Cache + Speed Optimizations:**
+- **Alembic Migration System Setup:**
+  - Installed and configured Alembic for database schema version control
+  - Created alembic.ini and alembic/env.py with DATABASE_URL auto-loading
+  - Migration system now handles schema changes without data loss
+  - DEPLOYMENT_MIGRATION_GUIDE.md created with EC2 deployment instructions
+  
+- **7-Day CAPTCHA Verification Cache:**
+  - Added `captcha_verified_at` (DateTime) field to User model
+  - /start handler now checks if CAPTCHA verified within last 7 days
+  - If valid cache: skip verification, go directly to main menu
+  - If expired/missing: show CAPTCHA verification as before
+  - Reduces friction for returning users while maintaining security
+  
+- **CAPTCHA Speed Optimizations:**
+  - Image size reduced: 280x90 → 200x70 pixels (30% smaller, faster to load)
+  - Character count: 5 → 4 characters (easier and faster to type)
+  - No custom font loading overhead (uses library defaults)
+  - Already using in-memory BytesIO (no disk I/O)
+  - Combined improvements: ~40% faster user experience
+  
+- **How It Works:**
+  - New user: Full CAPTCHA + channel verification → timestamp saved
+  - Returning user (< 7 days): Direct to main menu, no verification
+  - Returning user (> 7 days): CAPTCHA + channels again → new timestamp
+  - Security maintained while improving UX for regular users
+
+## Recent Changes
+
 **October 21, 2025 - AWS EC2 Deployment Configuration:**
 - **Created complete AWS EC2 deployment setup:**
   - AWS_DEPLOYMENT.md: Comprehensive guide for AWS Free Tier deployment

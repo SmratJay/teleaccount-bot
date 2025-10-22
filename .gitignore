@@ -210,3 +210,7 @@ logs/
 *.session-journal
 proxy_list.txt
 config.json
+
+# Alembic - Keep migration files, ignore bytecode
+alembic/__pycache__/
+alembic/versions/__pycache__/
