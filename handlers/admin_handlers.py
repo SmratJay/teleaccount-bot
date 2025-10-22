@@ -2307,7 +2307,7 @@ The seller will be notified of the approval.
             
             keyboard = [
                 [InlineKeyboardButton('📋 Back to Sales', callback_data='sale_logs_panel')],
-                [InlineKeyboardButton('✅ Approve Another', callback_data='approve_sale_list')]
+                [InlineKeyboardButton('✅ Approve Another', callback_data='approve_sales_tickets')]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
@@ -2453,7 +2453,7 @@ Please try again.
         
         keyboard = [
             [InlineKeyboardButton('📋 Back to Sales', callback_data='sale_logs_panel')],
-            [InlineKeyboardButton('❌ Reject Another', callback_data='approve_sale_list')]
+            [InlineKeyboardButton('❌ Reject Another', callback_data='reject_sales_tickets')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
