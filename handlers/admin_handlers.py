@@ -1038,7 +1038,7 @@ def setup_admin_handlers(application) -> None:
     
     # Sale Logs & Approval handlers
     application.add_handler(CallbackQueryHandler(handle_sale_logs_panel, pattern='^sale_logs_panel$'))
-    application.add_handler(CallbackQueryHandler(handle_approve_sale_list, pattern='^approve_sale_list$'))
+    # NEW TICKET SYSTEM HANDLERS WILL BE ADDED HERE
     application.add_handler(CallbackQueryHandler(handle_approve_sale_action, pattern='^approve_sale_\\d+$'))
     application.add_handler(CallbackQueryHandler(handle_reject_sale_action, pattern='^reject_sale_\\d+$'))
     
@@ -1548,10 +1548,9 @@ Frozen accounts **CANNOT** be approved until unfrozen.
 '''
         
         keyboard = [
-            [InlineKeyboardButton(f'✅ Approve Sales ({len(active_pending)})', callback_data='approve_sale_list')],
-            [InlineKeyboardButton(f'❌ Reject Sales', callback_data='reject_sale_list')],
+            [InlineKeyboardButton(f'✅ Approve Sales ({len(active_pending)})', callback_data='approve_sales_tickets')],
+            [InlineKeyboardButton(f'❌ Reject Sales', callback_data='reject_sales_tickets')],
             [InlineKeyboardButton('🔍 Search Logs', callback_data='search_sale_logs')],
-            [InlineKeyboardButton('📊 Detailed Stats', callback_data='sale_logs_stats')],
             [InlineKeyboardButton('🔙 Back to Admin', callback_data='admin_panel')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1561,57 +1560,7 @@ Frozen accounts **CANNOT** be approved until unfrozen.
     finally:
         close_db_session(db)
 
-async def handle_approve_sale_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    '''Show list of sales that can be approved (not frozen).'''
-    query = update.callback_query
-    await query.answer()
-    
-    user = update.effective_user
-    if not is_admin(user.id):
-        await query.edit_message_text('❌ Access denied.')
-        return
-    
-    from database import get_db_session, close_db_session
-    from database.sale_log_operations import sale_log_service
-    
-    db = get_db_session()
-    try:
-        pending_logs = sale_log_service.get_pending_sale_logs(db, include_frozen=False, limit=20)
-        
-        if not pending_logs:
-            text = '''
-✅ **NO SALES TO APPROVE**
-
-All pending sales either require unfreezing or have been processed.
-            '''
-            keyboard = [[InlineKeyboardButton('🔙 Back', callback_data='sale_logs_panel')]]
-        else:
-            text = f'''
-✅ **APPROVABLE SALES** ({len(pending_logs)})
-
-These sales can be approved (accounts are NOT frozen):
-
-'''
-            keyboard = []
-            for i, log in enumerate(pending_logs[:15], 1):
-                text += f'''
-{i}. 🟢 **{log.account_phone}**
-   Seller: @{log.seller_username} - \
-   ID: {log.id}
-
-'''
-                keyboard.append([
-                    InlineKeyboardButton(f'✅ Approve #{log.id}', callback_data=f'approve_sale_{log.id}'),
-                    InlineKeyboardButton(f'❌ Reject #{log.id}', callback_data=f'reject_sale_{log.id}')
-                ])
-            
-            keyboard.append([InlineKeyboardButton('🔙 Back', callback_data='sale_logs_panel')])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
-        
-    finally:
-        close_db_session(db)
+# OLD APPROVE/REJECT LIST HANDLER REMOVED - REPLACED WITH TICKET SYSTEM BELOW
 
 async def handle_approve_sale_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     '''Approve a specific sale after freeze check.'''
