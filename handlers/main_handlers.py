@@ -636,7 +636,6 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}
         
         keyboard = [
             [InlineKeyboardButton("🔄 Refresh Status", callback_data="system_capacity")],
-            [InlineKeyboardButton("📊 Detailed Stats", callback_data="detailed_stats")],
             [InlineKeyboardButton("← Back to Menu", callback_data="main_menu")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)

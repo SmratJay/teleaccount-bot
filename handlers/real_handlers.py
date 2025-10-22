@@ -83,10 +83,10 @@ async def show_real_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
             is_admin = bool(getattr(db_user, 'is_admin', False))
             
             message_text = f"""
-🎉 **Welcome to Real Account Marketplace!**
+🎉 **Welcome to teleflare_bot_io**
 
 👤 **User:** {username_display}
-💰 **Balance:** \\${balance:.2f}
+💰 **Balance:** ${balance:.2f}
 ✅ **Status:** Verified
 
 **What would you like to do?**

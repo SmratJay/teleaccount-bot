@@ -1688,7 +1688,7 @@ Frozen accounts **CANNOT** be approved until unfrozen.
 '''
         
         if not pending_logs:
-            logs_text += '\\n✅ No pending sales requiring approval.\\n'
+            logs_text += '✅ No pending sales requiring approval.'
         else:
             for i, log in enumerate(pending_logs[:10], 1):  # Show first 10
                 freeze_indicator = '❄️' if log.account_is_frozen else '🟢'
