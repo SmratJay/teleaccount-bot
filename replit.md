@@ -6,12 +6,18 @@ A comprehensive Telegram bot platform for selling Telegram accounts. It features
 
 ## Recent Changes (October 22, 2025)
 
-**Main Menu Performance Optimization (Latest):**
-- Eliminated redundant database queries when loading the main menu
+**Reports & Logs Dashboard Polish + Main Menu Optimization (Latest):**
+- **Dashboard Cleanup**: Removed Activity Logs and Revenue Report buttons from Reports & Logs panel (now shows User Report, Session Details, Refresh Stats, Back to Admin)
+- **User Report Enhancement**: Added "Download UserIDs File" button that generates and sends `userids.txt` with all user IDs who have captured sessions (one ID per line)
+- **Session Details Menu**: New menu showing session statistics (total sessions, unique users) with "Download Session Files" button
+- **Session File Download**: ConversationHandler allowing admins to download session files by typing username - finds latest session and sends file with metadata
+- **Bug Fixes**: Fixed double-answer callback query bug, improved file handling with context managers throughout
+- **Main Menu Performance**: Eliminated duplicate database query in `show_real_main_menu()` - reduced from 2 queries to 1 by loading language directly from fetched user object instead of calling `load_user_language()` helper (saves 50-200ms per menu load)
+
+**Previous Main Menu Optimization:**
 - Optimized `button_callback()` to fetch user data once and load language from the same object
 - Modified `show_real_main_menu()` to accept optional pre-fetched `db_user_cached` parameter
 - Updated `start_handler` to pass cached user object when redirecting to main menu
-- Reduced database queries from 4 to 1-2 per main menu load (2x-4x performance improvement)
 - Language loading now uses direct user object instead of separate DB query
 - Main menu redirects are now noticeably faster, especially with network latency
 
