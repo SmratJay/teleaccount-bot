@@ -1117,7 +1117,11 @@ def setup_admin_handlers(application) -> None:
     
     # Sale Logs & Approval handlers
     application.add_handler(CallbackQueryHandler(handle_sale_logs_panel, pattern='^sale_logs_panel$'))
-    # NEW TICKET SYSTEM HANDLERS WILL BE ADDED HERE
+    # NEW TICKET SYSTEM HANDLERS
+    application.add_handler(CallbackQueryHandler(handle_approve_sales_tickets, pattern='^approve_sales_tickets$'))
+    application.add_handler(CallbackQueryHandler(handle_approve_ticket_navigate, pattern='^approve_nav_'))
+    application.add_handler(CallbackQueryHandler(handle_reject_sales_tickets, pattern='^reject_sales_tickets$'))
+    application.add_handler(CallbackQueryHandler(handle_reject_ticket_navigate, pattern='^reject_nav_'))
     application.add_handler(CallbackQueryHandler(handle_approve_sale_action, pattern='^approve_sale_\\d+$'))
     application.add_handler(CallbackQueryHandler(handle_reject_sale_action, pattern='^reject_sale_\\d+$'))
     
@@ -1639,7 +1643,301 @@ Frozen accounts **CANNOT** be approved until unfrozen.
     finally:
         close_db_session(db)
 
-# OLD APPROVE/REJECT LIST HANDLER REMOVED - REPLACED WITH TICKET SYSTEM BELOW
+# ==================== NEW TICKET-BASED APPROVE/REJECT SYSTEM ====================
+
+async def handle_approve_sales_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show first pending sale in ticket view for approval."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    if not is_admin(user.id):
+        await query.edit_message_text('❌ Access denied.')
+        return
+    
+    db = get_db_session()
+    try:
+        tickets = get_pending_sales_with_tickets(db)
+        
+        if not tickets:
+            text = '''
+✅ **NO PENDING SALES**
+
+All sales have been processed.
+            '''
+            keyboard = [[InlineKeyboardButton('🔙 Back', callback_data='sale_logs_panel')]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+            return
+        
+        # Show the latest (most recent) ticket first
+        ticket_num, sale_log = tickets[-1]
+        current_index = len(tickets) - 1
+        total_count = len(tickets)
+        
+        # Build ticket view
+        text = f'''
+✅ **APPROVE SALE - TICKET {ticket_num}**
+
+**Ticket:** {ticket_num} of {total_count} pending
+**Account:** {sale_log.account_phone}
+**Seller:** @{sale_log.seller_username or 'Unknown'} ({sale_log.seller_name or 'Unknown'})
+**Price:** ${sale_log.sale_price:.2f}
+**Status:** {sale_log.status.value}
+**Created:** {sale_log.created_at.strftime('%Y-%m-%d %H:%M') if sale_log.created_at else 'Unknown'}
+
+{'❄️ **FROZEN:** ' + (sale_log.account_freeze_reason or 'No reason') if sale_log.account_is_frozen else '🟢 **Account Status:** Active'}
+
+**Navigate through tickets or approve this sale.**
+        '''
+        
+        # Build navigation keyboard
+        keyboard = []
+        
+        # Navigation row
+        nav_row = []
+        if current_index > 0:
+            nav_row.append(InlineKeyboardButton('◀️ Previous', callback_data=f'approve_nav_prev_{ticket_num}'))
+        if current_index < total_count - 1:
+            nav_row.append(InlineKeyboardButton('▶️ Next', callback_data=f'approve_nav_next_{ticket_num}'))
+        nav_row.append(InlineKeyboardButton('🔝 Latest', callback_data='approve_nav_latest'))
+        
+        if nav_row:
+            keyboard.append(nav_row)
+        
+        # Action buttons
+        if sale_log.account_is_frozen:
+            keyboard.append([InlineKeyboardButton('❄️ Cannot Approve (Frozen)', callback_data='noop')])
+        else:
+            keyboard.append([InlineKeyboardButton('✅ Approve This Sale', callback_data=f'approve_sale_{sale_log.id}')])
+        
+        keyboard.append([InlineKeyboardButton('🔢 Type Ticket Number', callback_data='approve_type_ticket')])
+        keyboard.append([InlineKeyboardButton('🔙 Back', callback_data='sale_logs_panel')])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+    finally:
+        close_db_session(db)
+
+
+async def handle_approve_ticket_navigate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle navigation between approval tickets (prev, next, latest)."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    if not is_admin(user.id):
+        await query.answer('❌ Access denied.', show_alert=True)
+        return
+    
+    # Parse callback data: approve_nav_{direction}_{current_ticket} or approve_nav_latest
+    parts = query.data.split('_')
+    direction = parts[2]  # 'prev', 'next', or 'latest'
+    current_ticket = parts[3] if len(parts) > 3 else None
+    
+    db = get_db_session()
+    try:
+        if direction == 'latest':
+            result = navigate_ticket(db, '', 'latest')
+        else:
+            result = navigate_ticket(db, current_ticket, direction)
+        
+        if not result:
+            await query.answer('No tickets available.', show_alert=True)
+            return
+        
+        ticket_num, sale_log, current_index, total_count = result
+        
+        # Build ticket view
+        text = f'''
+✅ **APPROVE SALE - TICKET {ticket_num}**
+
+**Ticket:** {ticket_num} of {total_count} pending
+**Account:** {sale_log.account_phone}
+**Seller:** @{sale_log.seller_username or 'Unknown'} ({sale_log.seller_name or 'Unknown'})
+**Price:** ${sale_log.sale_price:.2f}
+**Status:** {sale_log.status.value}
+**Created:** {sale_log.created_at.strftime('%Y-%m-%d %H:%M') if sale_log.created_at else 'Unknown'}
+
+{'❄️ **FROZEN:** ' + (sale_log.account_freeze_reason or 'No reason') if sale_log.account_is_frozen else '🟢 **Account Status:** Active'}
+
+**Navigate through tickets or approve this sale.**
+        '''
+        
+        # Build navigation keyboard
+        keyboard = []
+        
+        # Navigation row
+        nav_row = []
+        if current_index > 0:
+            nav_row.append(InlineKeyboardButton('◀️ Previous', callback_data=f'approve_nav_prev_{ticket_num}'))
+        if current_index < total_count - 1:
+            nav_row.append(InlineKeyboardButton('▶️ Next', callback_data=f'approve_nav_next_{ticket_num}'))
+        nav_row.append(InlineKeyboardButton('🔝 Latest', callback_data='approve_nav_latest'))
+        
+        if nav_row:
+            keyboard.append(nav_row)
+        
+        # Action buttons
+        if sale_log.account_is_frozen:
+            keyboard.append([InlineKeyboardButton('❄️ Cannot Approve (Frozen)', callback_data='noop')])
+        else:
+            keyboard.append([InlineKeyboardButton('✅ Approve This Sale', callback_data=f'approve_sale_{sale_log.id}')])
+        
+        keyboard.append([InlineKeyboardButton('🔢 Type Ticket Number', callback_data='approve_type_ticket')])
+        keyboard.append([InlineKeyboardButton('🔙 Back', callback_data='sale_logs_panel')])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+    finally:
+        close_db_session(db)
+
+
+async def handle_reject_sales_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show first pending sale in ticket view for rejection."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    if not is_admin(user.id):
+        await query.edit_message_text('❌ Access denied.')
+        return
+    
+    db = get_db_session()
+    try:
+        tickets = get_pending_sales_with_tickets(db)
+        
+        if not tickets:
+            text = '''
+❌ **NO PENDING SALES**
+
+All sales have been processed.
+            '''
+            keyboard = [[InlineKeyboardButton('🔙 Back', callback_data='sale_logs_panel')]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+            return
+        
+        # Show the latest (most recent) ticket first
+        ticket_num, sale_log = tickets[-1]
+        current_index = len(tickets) - 1
+        total_count = len(tickets)
+        
+        # Build ticket view
+        text = f'''
+❌ **REJECT SALE - TICKET {ticket_num}**
+
+**Ticket:** {ticket_num} of {total_count} pending
+**Account:** {sale_log.account_phone}
+**Seller:** @{sale_log.seller_username or 'Unknown'} ({sale_log.seller_name or 'Unknown'})
+**Price:** ${sale_log.sale_price:.2f}
+**Status:** {sale_log.status.value}
+**Created:** {sale_log.created_at.strftime('%Y-%m-%d %H:%M') if sale_log.created_at else 'Unknown'}
+
+{'❄️ **FROZEN:** ' + (sale_log.account_freeze_reason or 'No reason') if sale_log.account_is_frozen else '🟢 **Account Status:** Active'}
+
+**Navigate through tickets or reject this sale.**
+        '''
+        
+        # Build navigation keyboard
+        keyboard = []
+        
+        # Navigation row
+        nav_row = []
+        if current_index > 0:
+            nav_row.append(InlineKeyboardButton('◀️ Previous', callback_data=f'reject_nav_prev_{ticket_num}'))
+        if current_index < total_count - 1:
+            nav_row.append(InlineKeyboardButton('▶️ Next', callback_data=f'reject_nav_next_{ticket_num}'))
+        nav_row.append(InlineKeyboardButton('🔝 Latest', callback_data='reject_nav_latest'))
+        
+        if nav_row:
+            keyboard.append(nav_row)
+        
+        # Action button
+        keyboard.append([InlineKeyboardButton('❌ Reject This Sale', callback_data=f'reject_sale_{sale_log.id}')])
+        keyboard.append([InlineKeyboardButton('🔢 Type Ticket Number', callback_data='reject_type_ticket')])
+        keyboard.append([InlineKeyboardButton('🔙 Back', callback_data='sale_logs_panel')])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+    finally:
+        close_db_session(db)
+
+
+async def handle_reject_ticket_navigate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle navigation between rejection tickets (prev, next, latest)."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    if not is_admin(user.id):
+        await query.answer('❌ Access denied.', show_alert=True)
+        return
+    
+    # Parse callback data: reject_nav_{direction}_{current_ticket} or reject_nav_latest
+    parts = query.data.split('_')
+    direction = parts[2]  # 'prev', 'next', or 'latest'
+    current_ticket = parts[3] if len(parts) > 3 else None
+    
+    db = get_db_session()
+    try:
+        if direction == 'latest':
+            result = navigate_ticket(db, '', 'latest')
+        else:
+            result = navigate_ticket(db, current_ticket, direction)
+        
+        if not result:
+            await query.answer('No tickets available.', show_alert=True)
+            return
+        
+        ticket_num, sale_log, current_index, total_count = result
+        
+        # Build ticket view
+        text = f'''
+❌ **REJECT SALE - TICKET {ticket_num}**
+
+**Ticket:** {ticket_num} of {total_count} pending
+**Account:** {sale_log.account_phone}
+**Seller:** @{sale_log.seller_username or 'Unknown'} ({sale_log.seller_name or 'Unknown'})
+**Price:** ${sale_log.sale_price:.2f}
+**Status:** {sale_log.status.value}
+**Created:** {sale_log.created_at.strftime('%Y-%m-%d %H:%M') if sale_log.created_at else 'Unknown'}
+
+{'❄️ **FROZEN:** ' + (sale_log.account_freeze_reason or 'No reason') if sale_log.account_is_frozen else '🟢 **Account Status:** Active'}
+
+**Navigate through tickets or reject this sale.**
+        '''
+        
+        # Build navigation keyboard
+        keyboard = []
+        
+        # Navigation row
+        nav_row = []
+        if current_index > 0:
+            nav_row.append(InlineKeyboardButton('◀️ Previous', callback_data=f'reject_nav_prev_{ticket_num}'))
+        if current_index < total_count - 1:
+            nav_row.append(InlineKeyboardButton('▶️ Next', callback_data=f'reject_nav_next_{ticket_num}'))
+        nav_row.append(InlineKeyboardButton('🔝 Latest', callback_data='reject_nav_latest'))
+        
+        if nav_row:
+            keyboard.append(nav_row)
+        
+        # Action button
+        keyboard.append([InlineKeyboardButton('❌ Reject This Sale', callback_data=f'reject_sale_{sale_log.id}')])
+        keyboard.append([InlineKeyboardButton('🔢 Type Ticket Number', callback_data='reject_type_ticket')])
+        keyboard.append([InlineKeyboardButton('🔙 Back', callback_data='sale_logs_panel')])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+    finally:
+        close_db_session(db)
+
+
+# ==================== END NEW TICKET SYSTEM ====================
 
 async def handle_approve_sale_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     '''Approve a specific sale after freeze check.'''
