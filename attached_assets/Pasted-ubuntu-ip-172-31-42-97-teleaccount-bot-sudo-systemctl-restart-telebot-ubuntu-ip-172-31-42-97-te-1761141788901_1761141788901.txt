@@ -1,0 +1,59 @@
+ubuntu@ip-172-31-42-97:~/teleaccount-bot$ sudo systemctl restart telebot
+ubuntu@ip-172-31-42-97:~/teleaccount-bot$ sudo systemctl status telebot
+● telebot.service - Telegram Account Selling Bot
+     Loaded: loaded (/etc/systemd/system/telebot.service; enabled; preset: enabled)
+     Active: activating (auto-restart) (Result: exit-code) since Wed 2025-10-22 14:02:38 UTC; 3s ago
+    Process: 28569 ExecStart=/usr/bin/python3 -u /home/ubuntu/teleaccount-bot/real_main.py (code=exited, status=1/FAILURE)
+   Main PID: 28569 (code=exited, status=1/FAILURE)
+        CPU: 100ms
+ubuntu@ip-172-31-42-97:~/teleaccount-bot$ sudo journalctl -u telebot -n 50
+Oct 22 14:01:56 ip-172-31-42-97 systemd[1]: telebot.service: Main process exited, code=exited, status=1/FAILURE
+Oct 22 14:01:56 ip-172-31-42-97 systemd[1]: telebot.service: Failed with result 'exit-code'.
+Oct 22 14:02:06 ip-172-31-42-97 systemd[1]: telebot.service: Scheduled restart job, restart counter is at 161.
+Oct 22 14:02:06 ip-172-31-42-97 systemd[1]: Started telebot.service - Telegram Account Selling Bot.
+Oct 22 14:02:06 ip-172-31-42-97 telebot[28545]: Traceback (most recent call last):
+Oct 22 14:02:06 ip-172-31-42-97 telebot[28545]:   File "/home/ubuntu/teleaccount-bot/real_main.py", line 8, in <module>
+Oct 22 14:02:06 ip-172-31-42-97 telebot[28545]:     from telegram import Update
+Oct 22 14:02:06 ip-172-31-42-97 telebot[28545]: ImportError: cannot import name 'Update' from 'telegram' (unknown location)
+Oct 22 14:02:06 ip-172-31-42-97 systemd[1]: telebot.service: Main process exited, code=exited, status=1/FAILURE
+Oct 22 14:02:06 ip-172-31-42-97 systemd[1]: telebot.service: Failed with result 'exit-code'.
+Oct 22 14:02:16 ip-172-31-42-97 systemd[1]: telebot.service: Scheduled restart job, restart counter is at 162.
+Oct 22 14:02:16 ip-172-31-42-97 systemd[1]: Started telebot.service - Telegram Account Selling Bot.
+Oct 22 14:02:16 ip-172-31-42-97 telebot[28551]: Traceback (most recent call last):
+Oct 22 14:02:16 ip-172-31-42-97 telebot[28551]:   File "/home/ubuntu/teleaccount-bot/real_main.py", line 8, in <module>
+Oct 22 14:02:16 ip-172-31-42-97 telebot[28551]:     from telegram import Update
+Oct 22 14:02:16 ip-172-31-42-97 telebot[28551]: ImportError: cannot import name 'Update' from 'telegram' (unknown location)
+Oct 22 14:02:16 ip-172-31-42-97 systemd[1]: telebot.service: Main process exited, code=exited, status=1/FAILURE
+Oct 22 14:02:16 ip-172-31-42-97 systemd[1]: telebot.service: Failed with result 'exit-code'.
+Oct 22 14:02:26 ip-172-31-42-97 systemd[1]: telebot.service: Scheduled restart job, restart counter is at 163.
+Oct 22 14:02:26 ip-172-31-42-97 systemd[1]: Started telebot.service - Telegram Account Selling Bot.
+Oct 22 14:02:27 ip-172-31-42-97 telebot[28556]: Traceback (most recent call last):
+Oct 22 14:02:27 ip-172-31-42-97 telebot[28556]:   File "/home/ubuntu/teleaccount-bot/real_main.py", line 8, in <module>
+Oct 22 14:02:27 ip-172-31-42-97 telebot[28556]:     from telegram import Update
+Oct 22 14:02:27 ip-172-31-42-97 telebot[28556]: ImportError: cannot import name 'Update' from 'telegram' (unknown location)
+Oct 22 14:02:27 ip-172-31-42-97 systemd[1]: telebot.service: Main process exited, code=exited, status=1/FAILURE
+Oct 22 14:02:27 ip-172-31-42-97 systemd[1]: telebot.service: Failed with result 'exit-code'.
+Oct 22 14:02:37 ip-172-31-42-97 systemd[1]: telebot.service: Scheduled restart job, restart counter is at 164.
+Oct 22 14:02:37 ip-172-31-42-97 systemd[1]: Started telebot.service - Telegram Account Selling Bot.
+Oct 22 14:02:37 ip-172-31-42-97 telebot[28561]: Traceback (most recent call last):
+Oct 22 14:02:37 ip-172-31-42-97 telebot[28561]:   File "/home/ubuntu/teleaccount-bot/real_main.py", line 8, in <module>
+Oct 22 14:02:37 ip-172-31-42-97 telebot[28561]:     from telegram import Update
+Oct 22 14:02:37 ip-172-31-42-97 telebot[28561]: ImportError: cannot import name 'Update' from 'telegram' (unknown location)
+Oct 22 14:02:37 ip-172-31-42-97 systemd[1]: telebot.service: Main process exited, code=exited, status=1/FAILURE
+Oct 22 14:02:37 ip-172-31-42-97 systemd[1]: telebot.service: Failed with result 'exit-code'.
+Oct 22 14:02:38 ip-172-31-42-97 systemd[1]: Stopped telebot.service - Telegram Account Selling Bot.
+Oct 22 14:02:38 ip-172-31-42-97 systemd[1]: Started telebot.service - Telegram Account Selling Bot.
+Oct 22 14:02:38 ip-172-31-42-97 telebot[28569]: Traceback (most recent call last):
+Oct 22 14:02:38 ip-172-31-42-97 telebot[28569]:   File "/home/ubuntu/teleaccount-bot/real_main.py", line 8, in <module>
+Oct 22 14:02:38 ip-172-31-42-97 telebot[28569]:     from telegram import Update
+Oct 22 14:02:38 ip-172-31-42-97 telebot[28569]: ImportError: cannot import name 'Update' from 'telegram' (unknown location)
+Oct 22 14:02:38 ip-172-31-42-97 systemd[1]: telebot.service: Main process exited, code=exited, status=1/FAILURE
+Oct 22 14:02:38 ip-172-31-42-97 systemd[1]: telebot.service: Failed with result 'exit-code'.
+Oct 22 14:02:48 ip-172-31-42-97 systemd[1]: telebot.service: Scheduled restart job, restart counter is at 165.
+Oct 22 14:02:48 ip-172-31-42-97 systemd[1]: Started telebot.service - Telegram Account Selling Bot.
+Oct 22 14:02:48 ip-172-31-42-97 telebot[28577]: Traceback (most recent call last):
+Oct 22 14:02:48 ip-172-31-42-97 telebot[28577]:   File "/home/ubuntu/teleaccount-bot/real_main.py", line 8, in <module>
+Oct 22 14:02:48 ip-172-31-42-97 telebot[28577]:     from telegram import Update
+Oct 22 14:02:48 ip-172-31-42-97 telebot[28577]: ImportError: cannot import name 'Update' from 'telegram' (unknown location)
+Oct 22 14:02:48 ip-172-31-42-97 systemd[1]: telebot.service: Main process exited, code=exited, status=1/FAILURE
+Oct 22 14:02:48 ip-172-31-42-97 systemd[1]: telebot.service: Failed with result 'exit-code'.
