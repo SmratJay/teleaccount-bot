@@ -1,0 +1,117 @@
+ubuntu@ip-172-31-42-97:~/teleaccount-bot$ sudo journalctl -u telebot -f
+Oct 22 18:04:05 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:04:05,410 - telegram.ext.Application - INFO - Application started
+Oct 22 18:04:14 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:04:14,713 - apscheduler.executors.default - INFO - Running job "check_expired_freezes_job (trigger: interval[1:00:00], next run at: 2025-10-22 19:04:14 UTC)" (scheduled at 2025-10-22 18:04:14.702060+00:00)
+Oct 22 18:04:19 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:04:19,257 - apscheduler.executors.default - INFO - Job "check_expired_freezes_job (trigger: interval[1:00:00], next run at: 2025-10-22 19:04:14 UTC)" executed successfully
+Oct 22 18:04:19 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:04:19,257 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:04:29 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:04:29,290 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:04:39 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:04:39,331 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:04:49 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:04:49,359 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:04:59 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:04:59,389 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:05:09 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:09,424 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:05:19 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:19,456 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:05:29 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:29,486 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:05:31 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:31,995 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:32,279 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:32,282 - telegram.ext.Application - ERROR - No error handlers are registered, logging exception.
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]: Traceback (most recent call last):
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     self.dialect.do_execute(
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/engine/default.py", line 922, in do_execute
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     cursor.execute(statement, parameters)
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]: psycopg2.OperationalError: SSL connection has been closed unexpectedly
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]: The above exception was the direct cause of the following exception:
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]: Traceback (most recent call last):
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/usr/local/lib/python3.12/dist-packages/telegram/ext/_application.py", line 1234, in process_update
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     await coroutine
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/usr/local/lib/python3.12/dist-packages/telegram/ext/_basehandler.py", line 157, in handle_update
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     return await self.callback(update, context)
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/home/ubuntu/teleaccount-bot/handlers/real_handlers.py", line 179, in button_callback
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     db_user = UserService.get_user_by_telegram_id(db, update.effective_user.id)
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/home/ubuntu/teleaccount-bot/database/operations.py", line 241, in get_user_by_telegram_id
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     user = db.query(User).filter(User.telegram_user_id == telegram_id).first()
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/orm/query.py", line 2748, in first
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     return self.limit(1)._iter().first()  # type: ignore
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:            ^^^^^^^^^^^^^^^^^^^^^
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/orm/query.py", line 2847, in _iter
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:                                                   ^^^^^^^^^^^^^^^^^^^^^
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 2308, in execute
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     return self._execute_internal(
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:            ^^^^^^^^^^^^^^^^^^^^^^^
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 2190, in _execute_internal
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     result: Result[Any] = compile_state_cls.orm_execute_statement(
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/orm/context.py", line 293, in orm_execute_statement
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     result = conn.execute(
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:              ^^^^^^^^^^^^^
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1416, in execute
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     return meth(
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:            ^^^^^
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/sql/elements.py", line 516, in _execute_on_connection
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     return connection._execute_clauseelement(
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1639, in _execute_clauseelement
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     ret = self._execute_context(
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:           ^^^^^^^^^^^^^^^^^^^^^^
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     return self._exec_single_context(
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     self._handle_dbapi_exception(
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 2343, in _handle_dbapi_exception
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     self.dialect.do_execute(
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:   File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/engine/default.py", line 922, in do_execute
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:     cursor.execute(statement, parameters)
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]: sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]: [SQL: SELECT users.id AS users_id, users.telegram_user_id AS users_telegram_user_id, users.username AS users_username, users.first_name AS users_first_name, users.last_name AS users_last_name, users.language_code AS users_language_code, users.balance AS users_balance, users.status AS users_status, users.is_admin AS users_is_admin, users.is_leader AS users_is_leader, users.region AS users_region, users.captcha_completed AS users_captcha_completed, users.captcha_answer AS users_captcha_answer, users.captcha_type AS users_captcha_type, users.captcha_image_path AS users_captcha_image_path, users.verification_step AS users_verification_step, users.channels_joined AS users_channels_joined, users.verification_completed AS users_verification_completed, users.captcha_verified_at AS users_captcha_verified_at, users.total_accounts_sold AS users_total_accounts_sold, users.total_earnings AS users_total_earnings, users.created_at AS users_created_at, users.updated_at AS users_updated_at
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]: FROM users
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]: WHERE users.telegram_user_id = %(telegram_user_id_1)s
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]:  LIMIT %(param_1)s]
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]: [parameters: {'telegram_user_id_1': 6733908384, 'param_1': 1}]
+Oct 22 18:05:32 ip-172-31-42-97 telebot[29935]: (Background on this error at: https://sqlalche.me/e/20/e3q8)
+Oct 22 18:05:33 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:33,692 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:05:33 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:33,922 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:05:38 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:38,279 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:05:38 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:38,511 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:05:39 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:39,591 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:05:39 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:39,830 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:05:43 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:43,235 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:05:43 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:43,481 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:05:44 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:44,948 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:05:45 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:45,177 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:05:46 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:46,258 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:05:46 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:46,492 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:05:46 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:46,866 - handlers.real_handlers - INFO - Routing user 6733908384 to real main menu
+Oct 22 18:05:47 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:47,120 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:05:51 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:51,143 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:05:51 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:51,171 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:05:51 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:51,404 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/editMessageText "HTTP/1.1 200 OK"
+Oct 22 18:05:51 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:51,764 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:05:52 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:52,140 - handlers.real_handlers - INFO - Routing user 6733908384 to real main menu
+Oct 22 18:05:52 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:52,367 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:05:52 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:52,881 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/editMessageText "HTTP/1.1 400 Bad Request"
+Oct 22 18:05:52 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:52,881 - handlers.real_handlers - ERROR - Failed to send main menu message: Message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message
+Oct 22 18:05:53 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:53,005 - handlers.real_handlers - INFO - 🚀 START: User 6733908384 starting bot
+Oct 22 18:05:53 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:53,256 - handlers.real_handlers - INFO - ✅ CAPTCHA cache hit for user 6733908384 (0 days old)
+Oct 22 18:05:53 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:53,934 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/sendMessage "HTTP/1.1 200 OK"
+Oct 22 18:05:56 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:56,290 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:05:56 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:56,922 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/editMessageText "HTTP/1.1 200 OK"
+Oct 22 18:05:58 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:58,397 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:05:58 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:05:58,630 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:06:00 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:06:00,290 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:06:00 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:06:00,522 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:06:01 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:06:01,828 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:06:02 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:06:02,062 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:06:03 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:06:03,008 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:06:03 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:06:03,242 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:06:04 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:06:04,223 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:06:04 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:06:04,454 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:06:05 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:06:05,054 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:06:05 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:06:05,283 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:06:05 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:06:05,934 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:06:06 ip-172-31-42-97 telebot[29935]: 2025-10-22 18:06:06,178 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
