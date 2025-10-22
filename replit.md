@@ -6,6 +6,12 @@ A comprehensive Telegram bot platform for selling Telegram accounts. It features
 
 ## Recent Changes (October 22, 2025)
 
+**CAPTCHA Verification Fix (Latest):**
+- Fixed issue where previously verified users were forced to re-verify on first `/start` after update
+- Added fallback logic: if `captcha_verified_at` is NULL but user has `verification_completed=True`, backfill timestamp and skip verification
+- This handles users who verified before the 7-day cache feature was added
+- Users now go directly to main menu on first `/start` if they were already verified
+
 **Verification Flow UI Updates:**
 - Updated DEFAULT_VERIFICATION_CHANNELS to 2 channels: "MAIN Channel and support" (https://t.me/teleflare_bot_io) and "Backup channel" (no link)
 - Changed verification badge from ✅ to 💠 throughout the entire verification flow (CAPTCHA, channel verification, completion messages)
