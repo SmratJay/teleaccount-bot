@@ -1,0 +1,42 @@
+ubuntu@ip-172-31-42-97:~/teleaccount-bot$ alembic revision --autogenerate -m "Add captcha_verified_at field"
+Traceback (most recent call last):
+  File "/home/ubuntu/.local/bin/alembic", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/alembic/config.py", line 630, in main
+    CommandLine(prog=prog).main(argv=argv)
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/alembic/config.py", line 624, in main
+    self.run_cmd(cfg, options)
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/alembic/config.py", line 601, in run_cmd
+    fn(
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/alembic/command.py", line 234, in revision
+    script_directory.run_env()
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/alembic/script/base.py", line 579, in run_env
+    util.load_python_file(self.dir, "env.py")
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/alembic/util/pyfiles.py", line 93, in load_python_file
+    module = load_module_py(module_id, path)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/alembic/util/pyfiles.py", line 109, in load_module_py
+    spec.loader.exec_module(module)  # type: ignore
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/home/ubuntu/teleaccount-bot/alembic/env.py", line 14, in <module>
+    from database.models import Base
+  File "/home/ubuntu/teleaccount-bot/database/__init__.py", line 35, in <module>
+    engine = create_engine(
+             ^^^^^^^^^^^^^^
+  File "<string>", line 2, in create_engine
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/util/deprecations.py", line 281, in warned
+    return fn(*args, **kwargs)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/engine/create.py", line 548, in create_engine
+    u = _url.make_url(url)
+        ^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/engine/url.py", line 838, in make_url
+    return _parse_url(name_or_url)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/sqlalchemy/engine/url.py", line 899, in _parse_url
+    components["port"] = int(components["port"])
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: invalid literal for int() with base 10: 'None'
