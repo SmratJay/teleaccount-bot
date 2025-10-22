@@ -1,0 +1,48 @@
+===========================================
+STEP 1: SYNC TO GITHUB (Run on Replit/Computer)
+===========================================
+
+git add .
+git commit -m "UI text fixes: Update branding to teleflare_bot_io, fix balance display, clean admin messages"
+git push origin main
+
+
+===========================================
+STEP 2: DEPLOY TO EC2 (Run on EC2 Server)
+===========================================
+
+ssh -i your-key.pem ubuntu@13.53.80.228
+cd ~/teleaccount-bot
+git pull origin main
+sudo systemctl restart telebot
+sudo systemctl status telebot
+
+
+===========================================
+VERIFICATION COMMANDS (Optional)
+===========================================
+
+# View live logs:
+sudo journalctl -u telebot -f
+
+# View last 50 log lines:
+sudo journalctl -u telebot -n 50
+
+# Check which version is running:
+git log -1
+
+
+===========================================
+TROUBLESHOOTING (If needed)
+===========================================
+
+# If bot won't start:
+sudo systemctl stop telebot
+sleep 2
+sudo systemctl start telebot
+sudo systemctl status telebot
+
+# If showing old text:
+cd ~/teleaccount-bot
+git pull origin main
+sudo systemctl restart telebot
