@@ -504,7 +504,7 @@ async def start_session_download(update: Update, context: ContextTypes.DEFAULT_T
 
 Please type the **username** (without @) of the user whose session files you want to download.
 
-**Example:** `johndoe`
+**Example:** johndoe
 
 Type /cancel to go back.
     """
