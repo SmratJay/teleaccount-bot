@@ -1310,7 +1310,9 @@ def setup_admin_handlers(application) -> None:
     application.add_handler(get_add_admin_conversation())
     application.add_handler(get_remove_admin_conversation())
 
-    logger.info("Admin handlers set up successfully")# Additional handler functions will be implemented...
+    logger.info("Admin handlers set up successfully")
+
+# Additional handler functions will be implemented...
 async def handle_field_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle field selection for user editing."""
     # Implementation will continue...
