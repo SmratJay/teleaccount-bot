@@ -276,6 +276,9 @@ def setup_real_handlers(application) -> None:
                 captcha_verified_at = getattr(db_user, 'captcha_verified_at', None)
                 if captcha_verified_at:
                     # Check if CAPTCHA was verified within last 7 days
+                    # Make captcha_verified_at timezone-aware (it's stored as UTC but naive)
+                    if captcha_verified_at.tzinfo is None:
+                        captcha_verified_at = captcha_verified_at.replace(tzinfo=timezone.utc)
                     days_since_verification = (datetime.now(timezone.utc) - captcha_verified_at).days
                     
                     if days_since_verification < 7:
