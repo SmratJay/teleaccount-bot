@@ -375,6 +375,52 @@ class ActivityLog(Base):
         return f"<ActivityLog(id={self.id}, action={self.action_type}, user_id={self.user_id})>"
 
 
+class SessionLog(Base):
+    """Session Log model - tracks Telegram session details and activity."""
+    __tablename__ = 'session_logs'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    account_id = Column(Integer, ForeignKey('telegram_accounts.id'), nullable=True, index=True)
+    
+    # Session identification
+    session_hash = Column(String(255), nullable=True, index=True)
+    auth_key_id = Column(String(255), nullable=True)
+    
+    # Device information
+    device_model = Column(String(255), nullable=True)
+    system_version = Column(String(255), nullable=True)
+    app_name = Column(String(255), nullable=True)
+    app_version = Column(String(255), nullable=True)
+    
+    # Location and network
+    ip_address = Column(String(255), nullable=True)
+    country = Column(String(100), nullable=True)
+    region = Column(String(100), nullable=True)
+    
+    # Session status and metadata
+    status = Column(String(50), default='ACTIVE', index=True)  # ACTIVE, TERMINATED, EXPIRED
+    session_type = Column(String(50), nullable=True)  # LOGIN, OTP_RETRIEVAL, ACCOUNT_CONFIG, etc.
+    is_official_app = Column(Boolean, default=True)
+    is_current = Column(Boolean, default=False)
+    
+    # Timestamps
+    session_start = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    last_active = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    session_end = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    # Additional data
+    extra_data = Column(Text, nullable=True)  # JSON for additional session details
+    
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id])
+    account = relationship("TelegramAccount", foreign_keys=[account_id])
+
+    def __repr__(self):
+        return f"<SessionLog(id={self.id}, user_id={self.user_id}, device={self.device_model}, status={self.status})>"
+
+
 class VerificationTask(Base):
     """Verification Task model - maps to 'verification_tasks' table."""
     __tablename__ = 'verification_tasks'

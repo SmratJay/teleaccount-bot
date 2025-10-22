@@ -799,6 +799,177 @@ class ActivityLogService:
         ).limit(limit).all()
 
 
+class SessionLogService:
+    """Service for session logging and tracking operations."""
+    
+    @staticmethod
+    def create_session_log(db: Session, user_id: int = None, account_id: int = None, 
+                          session_data: Dict[str, Any] = None) -> Optional[Any]:
+        """Create a new session log entry."""
+        from database.models import SessionLog
+        
+        try:
+            session_log = SessionLog(
+                user_id=user_id,
+                account_id=account_id,
+                session_hash=session_data.get('session_hash') if session_data else None,
+                auth_key_id=session_data.get('auth_key_id') if session_data else None,
+                device_model=session_data.get('device_model') if session_data else None,
+                system_version=session_data.get('system_version') if session_data else None,
+                app_name=session_data.get('app_name') if session_data else None,
+                app_version=session_data.get('app_version') if session_data else None,
+                ip_address=session_data.get('ip_address') if session_data else None,
+                country=session_data.get('country') if session_data else None,
+                region=session_data.get('region') if session_data else None,
+                status=session_data.get('status', 'ACTIVE') if session_data else 'ACTIVE',
+                session_type=session_data.get('session_type') if session_data else None,
+                is_official_app=session_data.get('is_official_app', True) if session_data else True,
+                is_current=session_data.get('is_current', False) if session_data else False,
+                extra_data=session_data.get('extra_data') if session_data else None
+            )
+            db.add(session_log)
+            db.commit()
+            db.refresh(session_log)
+            logger.info(f"Created session log {session_log.id} for user {user_id}, account {account_id}")
+            return session_log
+        except Exception as e:
+            logger.error(f"Error creating session log: {e}")
+            db.rollback()
+            return None
+    
+    @staticmethod
+    def get_user_sessions(db: Session, user_id: int, active_only: bool = False, limit: int = 50):
+        """Get all sessions for a specific user."""
+        from database.models import SessionLog
+        
+        query = db.query(SessionLog).filter(SessionLog.user_id == user_id)
+        
+        if active_only:
+            query = query.filter(SessionLog.status == 'ACTIVE')
+        
+        return query.order_by(SessionLog.session_start.desc()).limit(limit).all()
+    
+    @staticmethod
+    def get_account_sessions(db: Session, account_id: int, active_only: bool = False, limit: int = 50):
+        """Get all sessions for a specific account."""
+        from database.models import SessionLog
+        
+        query = db.query(SessionLog).filter(SessionLog.account_id == account_id)
+        
+        if active_only:
+            query = query.filter(SessionLog.status == 'ACTIVE')
+        
+        return query.order_by(SessionLog.session_start.desc()).limit(limit).all()
+    
+    @staticmethod
+    def get_recent_sessions(db: Session, limit: int = 100, hours: int = 24):
+        """Get recent session logs within specified hours."""
+        from database.models import SessionLog
+        
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        
+        return db.query(SessionLog).filter(
+            SessionLog.session_start >= cutoff_time
+        ).order_by(SessionLog.session_start.desc()).limit(limit).all()
+    
+    @staticmethod
+    def get_active_sessions_count(db: Session, user_id: int = None, account_id: int = None) -> int:
+        """Get count of active sessions for user or account."""
+        from database.models import SessionLog
+        
+        query = db.query(func.count(SessionLog.id)).filter(SessionLog.status == 'ACTIVE')
+        
+        if user_id:
+            query = query.filter(SessionLog.user_id == user_id)
+        if account_id:
+            query = query.filter(SessionLog.account_id == account_id)
+        
+        return query.scalar() or 0
+    
+    @staticmethod
+    def terminate_session(db: Session, session_id: int) -> bool:
+        """Mark a session as terminated."""
+        from database.models import SessionLog
+        
+        try:
+            session = db.query(SessionLog).filter(SessionLog.id == session_id).first()
+            if not session:
+                logger.warning(f"Session {session_id} not found")
+                return False
+            
+            session.status = 'TERMINATED'
+            session.session_end = datetime.now(timezone.utc)
+            db.commit()
+            logger.info(f"Terminated session {session_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error terminating session {session_id}: {e}")
+            db.rollback()
+            return False
+    
+    @staticmethod
+    def terminate_user_sessions(db: Session, user_id: int, exclude_session_ids: List[int] = None) -> int:
+        """Terminate all active sessions for a user, optionally excluding specific sessions."""
+        from database.models import SessionLog
+        
+        try:
+            query = db.query(SessionLog).filter(
+                and_(SessionLog.user_id == user_id, SessionLog.status == 'ACTIVE')
+            )
+            
+            if exclude_session_ids:
+                query = query.filter(SessionLog.id.notin_(exclude_session_ids))
+            
+            sessions = query.all()
+            terminated_count = 0
+            
+            for session in sessions:
+                session.status = 'TERMINATED'
+                session.session_end = datetime.now(timezone.utc)
+                terminated_count += 1
+            
+            db.commit()
+            logger.info(f"Terminated {terminated_count} sessions for user {user_id}")
+            return terminated_count
+        except Exception as e:
+            logger.error(f"Error terminating user sessions: {e}")
+            db.rollback()
+            return 0
+    
+    @staticmethod
+    def update_session_activity(db: Session, session_id: int) -> bool:
+        """Update last_active timestamp for a session."""
+        from database.models import SessionLog
+        
+        try:
+            session = db.query(SessionLog).filter(SessionLog.id == session_id).first()
+            if session:
+                session.last_active = datetime.now(timezone.utc)
+                db.commit()
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Error updating session activity: {e}")
+            db.rollback()
+            return False
+    
+    @staticmethod
+    def get_multi_session_users(db: Session) -> List[Dict[str, Any]]:
+        """Get users with multiple active sessions (potential security risk)."""
+        from database.models import SessionLog
+        
+        multi_session_data = db.query(
+            SessionLog.user_id,
+            func.count(SessionLog.id).label('session_count')
+        ).filter(
+            SessionLog.status == 'ACTIVE'
+        ).group_by(SessionLog.user_id).having(
+            func.count(SessionLog.id) > 1
+        ).all()
+        
+        return [{'user_id': uid, 'session_count': count} for uid, count in multi_session_data]
+
+
 class VerificationService:
     """Service for verification task operations."""
     

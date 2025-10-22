@@ -8,7 +8,7 @@ from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler, Mes
 
 from database import get_db_session, close_db_session
 from database.operations import UserService, SystemSettingsService, ActivityLogService
-from database.models import User, Withdrawal, AccountSale, UserStatus
+from database.models import User, Withdrawal, AccountSale, UserStatus, SessionLog
 from services.translation_service import translation_service
 
 logger = logging.getLogger(__name__)
@@ -794,6 +794,9 @@ def setup_admin_handlers(application) -> None:
     # Session Management handlers
     application.add_handler(CallbackQueryHandler(handle_session_management, pattern='^admin_sessions$'))
     application.add_handler(CallbackQueryHandler(handle_terminate_user_sessions, pattern='^terminate_user_sessions$'))
+    application.add_handler(CallbackQueryHandler(handle_view_user_sessions, pattern='^view_user_sessions_\\d+$'))
+    application.add_handler(CallbackQueryHandler(handle_terminate_specific_session, pattern='^terminate_session_\\d+$'))
+    application.add_handler(CallbackQueryHandler(handle_terminate_all_user_sessions, pattern='^terminate_all_user_sessions_\\d+$'))
     application.add_handler(CallbackQueryHandler(handle_terminate_sessions_confirm, pattern='^terminate_sessions_\\d+$'))
     application.add_handler(CallbackQueryHandler(handle_view_session_holds, pattern='^view_session_holds$'))
     application.add_handler(CallbackQueryHandler(handle_release_all_holds, pattern='^release_all_holds$'))
@@ -1599,7 +1602,7 @@ This system automatically detects multi-device usage and places accounts on temp
     
     keyboard = [
         [InlineKeyboardButton("🚫 Terminate User Sessions", callback_data="terminate_user_sessions")],
-        [InlineKeyboardButton("📋 View Accounts on Hold", callback_data="view_session_holds")],
+        [InlineKeyboardButton("❄️ View Accounts on Freeze", callback_data="view_session_holds")],
         [InlineKeyboardButton("🔓 Release All Holds", callback_data="release_all_holds")],
         [InlineKeyboardButton("📊 Session Activity Logs", callback_data="session_activity_logs")],
         [InlineKeyboardButton("🔙 Back to Admin Panel", callback_data="admin_panel")]
@@ -1614,7 +1617,7 @@ This system automatically detects multi-device usage and places accounts on temp
 
 
 async def handle_terminate_user_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Show list of users to terminate sessions for."""
+    """Show list of users with active sessions to manage."""
     query = update.callback_query
     await query.answer()
     
@@ -1625,16 +1628,20 @@ async def handle_terminate_user_sessions(update: Update, context: ContextTypes.D
     
     db = get_db_session()
     try:
-        # Get all users with active accounts
-        from database.models import TelegramAccount
-        users_with_accounts = db.query(User).join(
-            TelegramAccount, 
-            TelegramAccount.user_id == User.id
-        ).distinct().limit(20).all()
+        from database.operations import SessionLogService
         
-        if not users_with_accounts:
+        # Get all users with active sessions
+        multi_session_users = SessionLogService.get_multi_session_users(db)
+        
+        # Get all users with at least one active session
+        all_session_users = db.query(User).join(
+            SessionLog,
+            SessionLog.user_id == User.id
+        ).filter(SessionLog.status == 'ACTIVE').distinct().all()
+        
+        if not all_session_users:
             await query.edit_message_text(
-                "⚠️ **No users with accounts found.**\n\nThere are no users with Telegram accounts to manage.",
+                "⚠️ **No active sessions found.**\n\nThere are currently no users with active Telegram sessions.",
                 parse_mode='Markdown',
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔙 Back", callback_data="admin_sessions")
@@ -1642,23 +1649,44 @@ async def handle_terminate_user_sessions(update: Update, context: ContextTypes.D
             )
             return
         
-        text = """
+        # Build multi-session lookup
+        multi_session_map = {u['user_id']: u['session_count'] for u in multi_session_users}
+        
+        text = f"""
 🚫 **TERMINATE USER SESSIONS**
 
-Select a user to terminate all their active Telegram sessions:
+**Total Users with Sessions:** {len(all_session_users)}
+**Users with Multiple Sessions:** {len(multi_session_users)} ⚠️
 
-**⚠️ Warning:** This will log the user out of all devices!
+Select a user to view and manage their sessions:
         """
         
         keyboard = []
-        for u in users_with_accounts[:15]:  # Limit to 15 users for UI
+        for u in all_session_users[:20]:  # Limit to 20 users for UI
             display_name = u.username or u.first_name or f"User {u.telegram_user_id}"
+            session_count = db.query(SessionLog).filter(
+                SessionLog.user_id == u.id,
+                SessionLog.status == 'ACTIVE'
+            ).count()
+            
+            # Highlight users with multiple sessions
+            if u.id in multi_session_map:
+                display = f"⚠️ {display_name} ({session_count} sessions)"
+            else:
+                display = f"👤 {display_name} ({session_count} session)"
+            
             keyboard.append([
                 InlineKeyboardButton(
-                    f"👤 {display_name} (ID: {u.telegram_user_id})",
-                    callback_data=f"terminate_sessions_{u.id}"
+                    display,
+                    callback_data=f"view_user_sessions_{u.id}"
                 )
             ])
+        
+        if len(all_session_users) > 20:
+            keyboard.append([InlineKeyboardButton(
+                f"... and {len(all_session_users) - 20} more users",
+                callback_data="noop"
+            )])
         
         keyboard.append([InlineKeyboardButton("🔙 Back", callback_data="admin_sessions")])
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1669,7 +1697,142 @@ Select a user to terminate all their active Telegram sessions:
         close_db_session(db)
 
 
-async def handle_terminate_sessions_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_view_user_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """View individual sessions for a specific user with termination options."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    if not is_admin(user.id):
+        await query.answer("❌ Access denied.", show_alert=True)
+        return
+    
+    # Extract user_id from callback data
+    user_id = int(query.data.split('_')[-1])
+    
+    db = get_db_session()
+    try:
+        from database.operations import SessionLogService
+        
+        # Get user details
+        target_user = db.query(User).filter(User.id == user_id).first()
+        if not target_user:
+            await query.answer("❌ User not found.", show_alert=True)
+            return
+        
+        # Get active sessions for this user
+        sessions = SessionLogService.get_user_sessions(db, user_id, active_only=True, limit=10)
+        
+        if not sessions:
+            await query.edit_message_text(
+                f"⚠️ **No active sessions found for {target_user.username or target_user.first_name}**",
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Back", callback_data="terminate_user_sessions")
+                ]])
+            )
+            return
+        
+        # Check if user has multiple sessions
+        has_multiple = len(sessions) > 1
+        
+        text = f"""
+📱 **USER SESSIONS: {target_user.username or target_user.first_name}**
+
+**Total Active Sessions:** {len(sessions)}
+{"**⚠️ MULTIPLE SESSIONS DETECTED**" if has_multiple else ""}
+
+**Sessions:**
+
+"""
+        
+        for i, session in enumerate(sessions, 1):
+            device_info = session.device_model or 'Unknown Device'
+            platform = session.system_version or 'Unknown'
+            ip = session.ip_address or 'Unknown IP'
+            country = session.country or 'Unknown'
+            is_current = " 🟢 CURRENT" if session.is_current else ""
+            
+            text += f"{i}. **{device_info}**{is_current}\n"
+            text += f"   └ Platform: {platform}\n"
+            text += f"   └ Location: {country} ({ip})\n"
+            text += f"   └ Active: {session.last_active.strftime('%m/%d %H:%M')}\n\n"
+        
+        if has_multiple:
+            text += "\n⚠️ **Action Required:** Multiple sessions detected. Terminate unauthorized sessions below."
+        
+        # Build termination buttons
+        keyboard = []
+        for session in sessions:
+            device_name = (session.device_model or 'Unknown')[:25]
+            current_marker = " 🟢" if session.is_current else ""
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"🚫 Terminate: {device_name}{current_marker}",
+                    callback_data=f"terminate_session_{session.id}"
+                )
+            ])
+        
+        if has_multiple:
+            keyboard.append([InlineKeyboardButton(
+                "🚫 Terminate ALL Sessions",
+                callback_data=f"terminate_all_user_sessions_{user_id}"
+            )])
+        
+        keyboard.append([InlineKeyboardButton("🔙 Back", callback_data="terminate_user_sessions")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+    finally:
+        close_db_session(db)
+
+
+async def handle_terminate_specific_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Terminate a specific session by ID."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    if not is_admin(user.id):
+        await query.answer("❌ Access denied.", show_alert=True)
+        return
+    
+    # Extract session_id from callback data
+    session_id = int(query.data.split('_')[-1])
+    
+    db = get_db_session()
+    try:
+        from database.operations import SessionLogService
+        
+        # Get session details
+        session = db.query(SessionLog).filter(SessionLog.id == session_id).first()
+        if not session:
+            await query.answer("❌ Session not found.", show_alert=True)
+            return
+        
+        # Terminate the session in database
+        success = SessionLogService.terminate_session(db, session_id)
+        
+        if success:
+            # Log the action
+            ActivityLogService.log_action(
+                db, user.id, "SESSION_TERMINATED",
+                f"Admin terminated session {session_id} (Device: {session.device_model})"
+            )
+            
+            await query.answer("✅ Session terminated successfully!", show_alert=True)
+            
+            # Refresh the view
+            await handle_view_user_sessions(update, context)
+        else:
+            await query.answer("❌ Failed to terminate session.", show_alert=True)
+        
+    finally:
+        close_db_session(db)
+
+
+async def handle_terminate_all_user_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Terminate all sessions for a specific user."""
     query = update.callback_query
     await query.answer()
@@ -1684,97 +1847,47 @@ async def handle_terminate_sessions_confirm(update: Update, context: ContextType
     
     db = get_db_session()
     try:
+        from database.operations import SessionLogService
+        
         # Get user details
         target_user = db.query(User).filter(User.id == user_id).first()
         if not target_user:
             await query.answer("❌ User not found.", show_alert=True)
             return
         
-        # Get user's Telegram accounts
-        from database.models import TelegramAccount
-        accounts = db.query(TelegramAccount).filter(
-            TelegramAccount.user_id == user_id
-        ).all()
+        # Terminate all sessions for this user
+        terminated_count = SessionLogService.terminate_user_sessions(db, user_id)
         
-        if not accounts:
-            await query.answer("⚠️ No accounts found for this user.", show_alert=True)
-            return
-        
-        # Show processing message
-        processing_text = f"""
-⏳ **TERMINATING SESSIONS...**
-
-**User:** {target_user.username or target_user.first_name}
-**Telegram ID:** {target_user.telegram_user_id}
-**Accounts Found:** {len(accounts)}
-
-🔄 Processing session terminations...
-        """
-        await query.edit_message_text(processing_text, parse_mode='Markdown')
-        
-        # Terminate sessions for each account
-        from services.session_management import session_manager
-        from services.real_telegram import real_telegram_service
-        
-        success_count = 0
-        failed_count = 0
-        
-        for account in accounts:
-            try:
-                # Create Telethon client for the account
-                client = await real_telegram_service.create_client(
-                    account.phone_number,
-                    use_proxy=False
-                )
-                
-                if client:
-                    # Terminate all sessions
-                    result = await session_manager.terminate_all_user_sessions(
-                        client, 
-                        target_user.telegram_user_id
-                    )
-                    
-                    if result.get('success'):
-                        success_count += 1
-                        logger.info(f"✅ Terminated sessions for account {account.phone_number}")
-                    else:
-                        failed_count += 1
-                        logger.error(f"❌ Failed to terminate sessions for {account.phone_number}")
-                    
-                    # Disconnect client
-                    await client.disconnect()
-                else:
-                    failed_count += 1
-                    
-            except Exception as e:
-                failed_count += 1
-                logger.error(f"Error terminating sessions for account {account.phone_number}: {e}")
-        
-        # Show results
-        result_text = f"""
-✅ **SESSION TERMINATION COMPLETE**
-
-**User:** {target_user.username or target_user.first_name}
-**Telegram ID:** {target_user.telegram_user_id}
-
-**Results:**
-• ✅ Successful: {success_count} accounts
-• ❌ Failed: {failed_count} accounts
-• 📊 Total Processed: {len(accounts)} accounts
-
-The user has been logged out of all devices where termination succeeded.
-        """
-        
-        keyboard = [
-            [InlineKeyboardButton("🚫 Terminate Another User", callback_data="terminate_user_sessions")],
-            [InlineKeyboardButton("🔙 Back to Session Management", callback_data="admin_sessions")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await query.edit_message_text(result_text, parse_mode='Markdown', reply_markup=reply_markup)
+        if terminated_count > 0:
+            # Log the action
+            ActivityLogService.log_action(
+                db, user.id, "ALL_SESSIONS_TERMINATED",
+                f"Admin terminated all {terminated_count} sessions for user {target_user.username or target_user.first_name}"
+            )
+            
+            await query.answer(f"✅ Terminated {terminated_count} sessions!", show_alert=True)
+            
+            # Go back to user list
+            await handle_terminate_user_sessions(update, context)
+        else:
+            await query.answer("⚠️ No active sessions to terminate.", show_alert=True)
         
     finally:
         close_db_session(db)
+
+
+async def handle_terminate_sessions_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """DEPRECATED - Redirects to new view_user_sessions handler."""
+    query = update.callback_query
+    await query.answer()
+    
+    # Extract user_id and redirect to new handler
+    user_id = int(query.data.split('_')[-1])
+    context.user_data['redirect_user_id'] = user_id
+    
+    # Modify callback data and call new handler
+    query.data = f"view_user_sessions_{user_id}"
+    await handle_view_user_sessions(update, context)
 
 
 async def handle_view_session_holds(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1895,7 +2008,7 @@ Please try again or check logs for details.
 
 
 async def handle_session_activity_logs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """View recent session-related activity logs."""
+    """View real-time session logs with device details and activity."""
     query = update.callback_query
     await query.answer()
     
@@ -1906,42 +2019,70 @@ async def handle_session_activity_logs(update: Update, context: ContextTypes.DEF
     
     db = get_db_session()
     try:
+        from database.operations import SessionLogService
         from database.models import ActivityLog
         
-        # Get recent session activities
+        # Get recent session logs (last 24 hours)
+        recent_sessions = SessionLogService.get_recent_sessions(db, limit=20, hours=24)
+        
+        # Get session-related activity logs
         activities = db.query(ActivityLog).filter(
             ActivityLog.action_type.in_([
                 'SESSION_MONITORED', 'ACCOUNT_HOLD', 'ACCOUNT_RELEASED', 
-                'ALL_SESSIONS_TERMINATED'
+                'ALL_SESSIONS_TERMINATED', 'SESSION_TERMINATED'
             ])
-        ).order_by(ActivityLog.created_at.desc()).limit(15).all()
+        ).order_by(ActivityLog.created_at.desc()).limit(10).all()
         
-        if not activities:
-            text = """
+        # Get statistics
+        total_active = db.query(SessionLog).filter(SessionLog.status == 'ACTIVE').count()
+        total_terminated = db.query(SessionLog).filter(SessionLog.status == 'TERMINATED').count()
+        multi_session = len(SessionLogService.get_multi_session_users(db))
+        
+        text = f"""
 📊 **SESSION ACTIVITY LOGS**
 
-No recent session activities found.
-            """
-        else:
-            text = f"""
-📊 **SESSION ACTIVITY LOGS**
+**Real-Time Statistics:**
+• 🟢 Active Sessions: {total_active}
+• 🔴 Terminated Sessions: {total_terminated}
+• ⚠️ Multi-Session Users: {multi_session}
 
-**Recent Activities ({len(activities)}):**
+**Recent Session Events (Last 24h):**
 
 """
-            for activity in activities:
+        
+        if recent_sessions:
+            for session in recent_sessions[:10]:
+                device = session.device_model or 'Unknown Device'
+                status_icon = "🟢" if session.status == 'ACTIVE' else "🔴"
+                timestamp = session.session_start.strftime('%m/%d %H:%M')
+                location = f"{session.country or 'Unknown'} ({session.ip_address or 'N/A'})"
+                
+                text += f"{status_icon} **{device}**\n"
+                text += f"   └ Location: {location}\n"
+                text += f"   └ Started: {timestamp}\n"
+                text += f"   └ Status: {session.status}\n\n"
+        else:
+            text += "_No session events in the last 24 hours._\n\n"
+        
+        if activities:
+            text += "\n**Admin Actions:**\n\n"
+            for activity in activities[:5]:
                 timestamp = activity.created_at.strftime('%m/%d %H:%M')
                 action_emoji = {
                     'SESSION_MONITORED': '👀',
                     'ACCOUNT_HOLD': '⏸️',
                     'ACCOUNT_RELEASED': '▶️',
-                    'ALL_SESSIONS_TERMINATED': '🚫'
+                    'ALL_SESSIONS_TERMINATED': '🚫',
+                    'SESSION_TERMINATED': '❌'
                 }.get(activity.action_type, '•')
                 
-                text += f"{action_emoji} **{activity.action_type}**\n"
-                text += f"   └ {timestamp} - {activity.details[:50]}...\n\n"
+                desc = activity.description[:60] if activity.description else 'No details'
+                text += f"{action_emoji} {timestamp} - {desc}\n"
         
-        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="admin_sessions")]]
+        keyboard = [
+            [InlineKeyboardButton("🔄 Refresh", callback_data="session_activity_logs")],
+            [InlineKeyboardButton("🔙 Back", callback_data="admin_sessions")]
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)

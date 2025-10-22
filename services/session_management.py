@@ -15,6 +15,7 @@ from database.operations import (
     TelegramAccountService,
     ActivityLogService,
     SystemSettingsService,
+    SessionLogService,
 )
 from database.models import TelegramAccount, AccountStatus, ActivityLog
 from services.account_management import account_manager
@@ -46,6 +47,29 @@ class SessionManagementService:
             # Get current session information
             sessions_info = await self._get_active_sessions(client)
             results['device_count'] = len(sessions_info.get('sessions', []))
+            
+            # Log all sessions to database for tracking
+            db = get_db_session()
+            try:
+                for session in sessions_info.get('sessions', []):
+                    session_log_data = {
+                        'session_hash': session.get('hash'),
+                        'auth_key_id': session.get('auth_key_id'),
+                        'device_model': session.get('device'),
+                        'system_version': session.get('system_version'),
+                        'app_name': session.get('app_name'),
+                        'app_version': session.get('app_version'),
+                        'ip_address': session.get('ip'),
+                        'country': session.get('country'),
+                        'region': session.get('region'),
+                        'status': 'ACTIVE',
+                        'session_type': 'LOGIN',
+                        'is_official_app': session.get('is_official_app', True),
+                        'is_current': session.get('is_current', False)
+                    }
+                    SessionLogService.create_session_log(db, user_id=user_id, account_id=account_id, session_data=session_log_data)
+            finally:
+                close_db_session(db)
             
             # Check for multi-device usage
             if results['device_count'] > 1:
@@ -118,23 +142,32 @@ class SessionManagementService:
             return results
     
     async def _get_active_sessions(self, client: TelegramClient) -> Dict[str, Any]:
-        """Get information about active sessions"""
+        """Get information about active sessions using Telegram API"""
         try:
-            # Get authorization info (this shows active sessions)
-            auth = await client.get_me()
+            from telethon.tl.functions.account import GetAuthorizationsRequest
             
-            # For now, we'll simulate session detection based on client status
-            # In a real implementation, you'd use Telegram's session management API
-            sessions = [
-                {
-                    'hash': 'current_session',
-                    'device': 'Current Device',
-                    'platform': 'Unknown',
-                    'date_created': datetime.now(),
-                    'date_active': datetime.now(),
-                    'ip': 'Unknown'
+            # Get list of active authorizations (sessions)
+            result = await client(GetAuthorizationsRequest())
+            
+            sessions = []
+            for auth in result.authorizations:
+                session_data = {
+                    'hash': str(auth.hash),
+                    'auth_key_id': str(getattr(auth, 'api_id', 'unknown')),
+                    'device': auth.device_model or 'Unknown Device',
+                    'platform': auth.platform or 'Unknown Platform',
+                    'system_version': auth.system_version or 'Unknown',
+                    'app_name': auth.app_name or 'Telegram',
+                    'app_version': auth.app_version or 'Unknown',
+                    'date_created': auth.date_created,
+                    'date_active': auth.date_active,
+                    'ip': auth.ip or 'Unknown',
+                    'country': auth.country or 'Unknown',
+                    'region': auth.region or '',
+                    'is_official_app': auth.official_app if hasattr(auth, 'official_app') else True,
+                    'is_current': auth.current if hasattr(auth, 'current') else False
                 }
-            ]
+                sessions.append(session_data)
             
             return {
                 'success': True,
@@ -143,12 +176,20 @@ class SessionManagementService:
             }
             
         except Exception as e:
-            logger.error(f"Error getting active sessions: {e}")
+            logger.error(f"Error getting active sessions via Telegram API: {e}")
+            # Fallback: return at least current session
             return {
                 'success': False,
                 'error': str(e),
-                'sessions': [],
-                'total_count': 0
+                'sessions': [{
+                    'hash': 'current_session',
+                    'device': 'Current Device',
+                    'platform': 'Unknown',
+                    'date_created': datetime.now(),
+                    'date_active': datetime.now(),
+                    'ip': 'Unknown'
+                }],
+                'total_count': 1
             }
     
     async def _terminate_other_sessions(self, client: TelegramClient, user_id: int) -> Dict[str, Any]:
