@@ -1236,16 +1236,43 @@ def setup_admin_handlers(application) -> None:
     # Reports & Logs handlers
     from handlers.reports_logs_handlers import (
         handle_admin_reports,
-        handle_view_activity_logs,
-        handle_view_sales_report,
         handle_view_user_report,
-        handle_view_revenue_report
+        handle_download_userids,
+        handle_view_session_details,
+        start_session_download,
+        process_session_username,
+        cancel_session_download,
+        SESSION_USERNAME_INPUT
     )
+    from telegram.ext import ConversationHandler, MessageHandler
+    from telegram import ext
+    
     application.add_handler(CallbackQueryHandler(handle_admin_reports, pattern='^admin_reports$'))
-    application.add_handler(CallbackQueryHandler(handle_view_activity_logs, pattern='^view_activity_logs$'))
-    application.add_handler(CallbackQueryHandler(handle_view_sales_report, pattern='^view_sales_report$'))
     application.add_handler(CallbackQueryHandler(handle_view_user_report, pattern='^view_user_report$'))
-    application.add_handler(CallbackQueryHandler(handle_view_revenue_report, pattern='^view_revenue_report$'))
+    application.add_handler(CallbackQueryHandler(handle_download_userids, pattern='^download_userids$'))
+    application.add_handler(CallbackQueryHandler(handle_view_session_details, pattern='^view_session_details$'))
+    
+    # Session download conversation handler
+    session_download_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(start_session_download, pattern='^download_session_files$')
+        ],
+        states={
+            SESSION_USERNAME_INPUT: [
+                MessageHandler(ext.filters.TEXT & ~ext.filters.COMMAND, process_session_username)
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(handle_view_session_details, pattern='^view_session_details$'),
+            CommandHandler('cancel', cancel_session_download)
+        ],
+        name="session_download_conversation",
+        per_user=True,
+        per_chat=True,
+        allow_reentry=True,
+        conversation_timeout=300
+    )
+    application.add_handler(session_download_conv)
     
     # System Settings handlers
     from handlers.system_settings_handlers import (
