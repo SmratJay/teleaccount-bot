@@ -1,0 +1,76 @@
+ubuntu@ip-172-31-42-97:~/teleaccount-bot$ chmod +x EC2_SIMPLE_FIX.sh
+ubuntu@ip-172-31-42-97:~/teleaccount-bot$ ./EC2_SIMPLE_FIX.sh
+=========================================
+EC2 Bot Update Script
+=========================================
+
+Step 1: Checking current code...
+Current commit:
+16d646c (HEAD -> main, origin/main) Add manual update instructions for the bot to fix admin panel issues
+
+Step 2: Fetching latest code from GitHub...
+
+Step 3: Hard reset to latest code...
+HEAD is now at 16d646c Add manual update instructions for the bot to fix admin panel issues
+
+Step 4: Verify new code exists...
+✅ New code detected!
+
+Step 5: Clearing Python cache...
+
+Step 6: Stopping bot...
+
+Step 7: Starting bot with new code...
+
+Step 8: Waiting for startup...
+
+Step 9: Checking if new code is running...
+=========================================
+Oct 22 18:13:56 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:13:56,779 - services.proxy_scheduler - INFO - ✅ Proxy refresh scheduler started (interval: 24.0 hours)
+Oct 22 18:13:57 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:13:57,663 - services.real_telegram - INFO - ✅ Bypass system initialized for flagged account handling
+Oct 22 18:13:57 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:13:57,682 - handlers.real_handlers - INFO - ✅ Withdrawal ConversationHandler registered
+Oct 22 18:13:57 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:13:57,682 - handlers.real_handlers - INFO - ✅ Selling ConversationHandler registered
+Oct 22 18:13:57 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:13:57,752 - handlers.real_handlers - ERROR - ❌ CRITICAL: Failed to load admin handlers: cannot access local variable 'ConversationHandler' where it is not associated with a value
+Oct 22 18:13:57 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:13:57,753 - handlers.real_handlers - INFO - ✅ CAPTCHA answer handler registered
+Oct 22 18:13:57 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:13:57,757 - handlers.real_handlers - INFO - ✅ Leader panel handlers loaded
+Oct 22 18:13:57 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:13:57,759 - handlers.real_handlers - INFO - ✅ Analytics dashboard handlers loaded
+Oct 22 18:13:57 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:13:57,759 - handlers.real_handlers - INFO - ✅ All modular handlers registered successfully
+Oct 22 18:13:57 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:13:57,759 - handlers - INFO - ✅ All modular handlers registered successfully
+
+=========================================
+Done! Check the output above for ✅ marks
+=========================================
+ubuntu@ip-172-31-42-97:~/teleaccount-bot$ sudo journalctl -u telebot -f
+Oct 22 18:14:21 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:21,809 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:14:22 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:22,354 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:14:22 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:22,573 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:14:22 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:22,939 - handlers.real_handlers - INFO - Routing user 6733908384 to real main menu
+Oct 22 18:14:23 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:23,148 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:14:27 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:27,446 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/editMessageText "HTTP/1.1 200 OK"
+Oct 22 18:14:29 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:29,270 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:14:30 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:30,040 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/editMessageText "HTTP/1.1 200 OK"
+Oct 22 18:14:31 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:31,643 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:14:31 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:31,935 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:14:41 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:41,586 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:14:41 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:41,869 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:14:42 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:42,246 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:14:42 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:42,481 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:14:42 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:42,848 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:14:43 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:43,081 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:14:43 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:43,459 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:14:43 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:43,523 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:14:43 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:43,693 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:14:44 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:44,311 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:14:46 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:46,766 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:14:46 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:46,998 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:14:47 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:47,364 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:14:47 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:47,602 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:14:47 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:47,979 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:14:48 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:48,006 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:14:48 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:48,216 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:14:48 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:48,821 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:14:49 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:49,429 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:14:53 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:53,390 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:14:53 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:53,630 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/answerCallbackQuery "HTTP/1.1 200 OK"
+Oct 22 18:14:58 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:58,352 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 200 OK"
+Oct 22 18:14:58 ip-172-31-42-97 telebot[30024]: 2025-10-22 18:14:58,589 - httpx - INFO - HT

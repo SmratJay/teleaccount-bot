@@ -1245,7 +1245,6 @@ def setup_admin_handlers(application) -> None:
             cancel_session_download,
             SESSION_USERNAME_INPUT
         )
-        from telegram.ext import ConversationHandler, MessageHandler
         from telegram import ext
         
         application.add_handler(CallbackQueryHandler(handle_admin_reports, pattern='^admin_reports$'))
