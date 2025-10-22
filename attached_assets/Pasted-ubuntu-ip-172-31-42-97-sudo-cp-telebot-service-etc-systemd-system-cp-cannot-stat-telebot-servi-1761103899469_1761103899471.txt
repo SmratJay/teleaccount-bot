@@ -1,0 +1,56 @@
+ubuntu@ip-172-31-42-97:~$ sudo cp telebot.service /etc/systemd/system
+cp: cannot stat 'telebot.service': No such file or directory
+ubuntu@ip-172-31-42-97:~$ mkdir /etc/systemd/system
+mkdir: cannot create directory ‘/etc/systemd/system’: File exists
+ubuntu@ip-172-31-42-97:~$ ls
+hi.py  setup_bot.sh  teleaccount-bot
+ubuntu@ip-172-31-42-97:~$ cd /etc
+ubuntu@ip-172-31-42-97:/etc$ ls
+ModemManager            dpkg                 libaudit.conf        overlayroot.local.conf  shells
+PackageKit              e2scrub.conf         libblockdev          pam.conf                skel
+X11                     ec2_version          libibverbs.d         pam.d                   sos
+acpi                    environment          libnl-3              passwd                  ssh
+adduser.conf            ethertypes           lighttpd             passwd-                 ssl
+alternatives            fonts                locale.alias         perl                    subgid
+apache2                 fstab                locale.conf          pki                     subgid-
+apparmor                fuse.conf            locale.gen           plymouth                subuid
+apparmor.d              fwupd                localtime            pm                      subuid-
+apport                  gai.conf             logcheck             polkit-1                sudo.conf
+apt                     gnutls               login.defs           pollinate               sudo_logsrvd.conf
+bash.bashrc             gprofng.rc           logrotate.conf       postgresql              sudoers
+bash_completion         groff                logrotate.d          postgresql-common       sudoers.d
+bash_completion.d       group                lsb-release          ppp                     supercat
+bindresvport.blacklist  group-               lvm                  profile                 sysctl.conf
+binfmt.d                grub.d               machine-id           profile.d               sysctl.d
+byobu                   gshadow              magic                protocols               sysstat
+ca-certificates         gshadow-             magic.mime           python3                 systemd
+ca-certificates.conf    gss                  manpath.config       python3.12              telegram-bot
+chrony                  hdparm.conf          mdadm                rc0.d                   terminfo
+cloud                   hibagent-config.cfg  mime.types           rc1.d                   timezone
+console-setup           hibinit-config.cfg   mke2fs.conf          rc2.d                   tmpfiles.d
+credstore               host.conf            modprobe.d           rc3.d                   ubuntu-advantage
+credstore.encrypted     hostname             modules              rc4.d                   ucf.conf
+cron.d                  hosts                modules-load.d       rc5.d                   udev
+cron.daily              hosts.allow          mtab                 rc6.d                   udisks2
+cron.hourly             hosts.deny           multipath            rcS.d                   ufw
+cron.monthly            init.d               multipath.conf       resolv.conf             update-manager
+cron.weekly             initramfs-tools      nanorc               rmt                     update-motd.d
+cron.yearly             inputrc              needrestart          rpc                     update-notifier
+crontab                 iproute2             netconfig            rsyslog.conf            usb_modeswitch.conf
+cryptsetup-initramfs    iscsi                netplan              rsyslog.d               usb_modeswitch.d
+crypttab                issue                network              screenrc                vconsole.conf
+dbus-1                  issue.net            networkd-dispatcher  security                vim
+debconf.conf            kernel               networks             selinux                 vmware-tools
+debian_version          landscape            newt                 sensors.d               vtrgb
+default                 ld.so.cache          nftables.conf        sensors3.conf           wgetrc
+deluser.conf            ld.so.conf           nsswitch.conf        services                xattr.conf
+depmod.d                ld.so.conf.d         opt                  sgml                    xdg
+dhcp                    ldap                 os-release           shadow                  xml
+dhcpcd.conf             legal                overlayroot.conf     shadow-                 zsh_command_not_found
+ubuntu@ip-172-31-42-97:/etc$ cd systemd
+ubuntu@ip-172-31-42-97:/etc/systemd$ ls
+journald.conf  network        pstore.conf    sleep.conf  system-generators  user
+logind.conf    networkd.conf  resolved.conf  system      system.conf        user.conf
+ubuntu@ip-172-31-42-97:/etc/systemd$ mkdir system
+mkdir: cannot create directory ‘system’: File exists
+ubuntu@ip-172-31-42-97:/etc/systemd$
