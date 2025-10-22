@@ -21,6 +21,85 @@ USER_FIELD_SELECT = 4
 USER_FIELD_VALUE = 5
 BALANCE_USERNAME_INPUT = 6
 BALANCE_AMOUNT_INPUT = 7
+TICKET_NUMBER_INPUT = 8  # For ticket-based approval/rejection
+
+# ==================== TICKET SYSTEM HELPER FUNCTIONS ====================
+
+def format_ticket_number(index: int) -> str:
+    """Format a ticket number with leading zeros (#0001, #0002, etc.)."""
+    return f"#{index:04d}"
+
+def get_pending_sales_with_tickets(db):
+    """
+    Get all pending sales ordered by creation date (oldest first) with ticket numbers.
+    Returns list of tuples: (ticket_number, sale_log)
+    """
+    from database.sale_log_operations import sale_log_service
+    
+    # Get all pending sales, ordered by created_at (oldest first for stable ticket numbering)
+    pending_sales = sale_log_service.get_pending_sale_logs(db, include_frozen=True, limit=1000)
+    
+    # Assign ticket numbers based on order (1-indexed)
+    tickets = []
+    for index, sale in enumerate(pending_sales, start=1):
+        ticket_num = format_ticket_number(index)
+        tickets.append((ticket_num, sale))
+    
+    return tickets
+
+def get_sale_by_ticket_number(db, ticket_number: str):
+    """
+    Get a sale log by its ticket number.
+    Returns (ticket_number, sale_log, current_index, total_count) or None.
+    """
+    tickets = get_pending_sales_with_tickets(db)
+    
+    for index, (ticket, sale) in enumerate(tickets):
+        if ticket == ticket_number:
+            return (ticket, sale, index, len(tickets))
+    
+    return None
+
+def navigate_ticket(db, current_ticket: str, direction: str):
+    """
+    Navigate to previous, next, or latest ticket.
+    direction: 'prev', 'next', or 'latest'
+    Returns (ticket_number, sale_log, current_index, total_count) or None.
+    """
+    tickets = get_pending_sales_with_tickets(db)
+    
+    if not tickets:
+        return None
+    
+    if direction == 'latest':
+        # Return the most recent (last in list)
+        ticket, sale = tickets[-1]
+        return (ticket, sale, len(tickets) - 1, len(tickets))
+    
+    # Find current ticket index
+    current_index = None
+    for index, (ticket, sale) in enumerate(tickets):
+        if ticket == current_ticket:
+            current_index = index
+            break
+    
+    if current_index is None:
+        # Current ticket not found, return first ticket
+        ticket, sale = tickets[0]
+        return (ticket, sale, 0, len(tickets))
+    
+    # Navigate
+    if direction == 'prev':
+        new_index = max(0, current_index - 1)
+    elif direction == 'next':
+        new_index = min(len(tickets) - 1, current_index + 1)
+    else:
+        new_index = current_index
+    
+    ticket, sale = tickets[new_index]
+    return (ticket, sale, new_index, len(tickets))
+
+# ==================== END TICKET SYSTEM HELPERS ====================
 
 async def handle_admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Main admin panel with all specified features."""
