@@ -62,9 +62,9 @@ def get_sale_by_ticket_number(db, ticket_number: str):
     
     return None
 
-def navigate_ticket(db, current_ticket: str, direction: str):
+def navigate_ticket_by_id(db, current_sale_id: int, direction: str):
     """
-    Navigate to previous, next, or latest ticket.
+    Navigate to previous, next, or latest ticket using stable sale_log.id.
     direction: 'prev', 'next', or 'latest'
     Returns (ticket_number, sale_log, current_index, total_count) or None.
     """
@@ -78,17 +78,17 @@ def navigate_ticket(db, current_ticket: str, direction: str):
         ticket, sale = tickets[-1]
         return (ticket, sale, len(tickets) - 1, len(tickets))
     
-    # Find current ticket index
+    # Find current sale by ID (stable across list changes)
     current_index = None
     for index, (ticket, sale) in enumerate(tickets):
-        if ticket == current_ticket:
+        if sale.id == current_sale_id:
             current_index = index
             break
     
     if current_index is None:
-        # Current ticket not found, return first ticket
-        ticket, sale = tickets[0]
-        return (ticket, sale, 0, len(tickets))
+        # Sale not found (already processed), return latest ticket
+        ticket, sale = tickets[-1] if tickets else (None, None)
+        return (ticket, sale, len(tickets) - 1, len(tickets)) if tickets else None
     
     # Navigate
     if direction == 'prev':
@@ -1736,15 +1736,15 @@ All sales have been processed.
 **Navigate through tickets or approve this sale.**
         '''
         
-        # Build navigation keyboard
+        # Build navigation keyboard (use sale_log.id for stable navigation)
         keyboard = []
         
         # Navigation row
         nav_row = []
         if current_index > 0:
-            nav_row.append(InlineKeyboardButton('◀️ Previous', callback_data=f'approve_nav_prev_{ticket_num}'))
+            nav_row.append(InlineKeyboardButton('◀️ Previous', callback_data=f'approve_nav_prev_{sale_log.id}'))
         if current_index < total_count - 1:
-            nav_row.append(InlineKeyboardButton('▶️ Next', callback_data=f'approve_nav_next_{ticket_num}'))
+            nav_row.append(InlineKeyboardButton('▶️ Next', callback_data=f'approve_nav_next_{sale_log.id}'))
         nav_row.append(InlineKeyboardButton('🔝 Latest', callback_data='approve_nav_latest'))
         
         if nav_row:
@@ -1767,7 +1767,7 @@ All sales have been processed.
 
 
 async def handle_approve_ticket_navigate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle navigation between approval tickets (prev, next, latest)."""
+    """Handle navigation between approval tickets (prev, next, latest) using stable sale_log.id."""
     query = update.callback_query
     await query.answer()
     
@@ -1776,17 +1776,17 @@ async def handle_approve_ticket_navigate(update: Update, context: ContextTypes.D
         await query.answer('❌ Access denied.', show_alert=True)
         return
     
-    # Parse callback data: approve_nav_{direction}_{current_ticket} or approve_nav_latest
+    # Parse callback data: approve_nav_{direction}_{sale_id} or approve_nav_latest
     parts = query.data.split('_')
     direction = parts[2]  # 'prev', 'next', or 'latest'
-    current_ticket = parts[3] if len(parts) > 3 else None
+    current_sale_id = int(parts[3]) if len(parts) > 3 else None
     
     db = get_db_session()
     try:
         if direction == 'latest':
-            result = navigate_ticket(db, '', 'latest')
+            result = navigate_ticket_by_id(db, 0, 'latest')
         else:
-            result = navigate_ticket(db, current_ticket, direction)
+            result = navigate_ticket_by_id(db, current_sale_id, direction)
         
         if not result:
             await query.answer('No tickets available.', show_alert=True)
@@ -1810,15 +1810,15 @@ async def handle_approve_ticket_navigate(update: Update, context: ContextTypes.D
 **Navigate through tickets or approve this sale.**
         '''
         
-        # Build navigation keyboard
+        # Build navigation keyboard (use sale_log.id for stable navigation)
         keyboard = []
         
         # Navigation row
         nav_row = []
         if current_index > 0:
-            nav_row.append(InlineKeyboardButton('◀️ Previous', callback_data=f'approve_nav_prev_{ticket_num}'))
+            nav_row.append(InlineKeyboardButton('◀️ Previous', callback_data=f'approve_nav_prev_{sale_log.id}'))
         if current_index < total_count - 1:
-            nav_row.append(InlineKeyboardButton('▶️ Next', callback_data=f'approve_nav_next_{ticket_num}'))
+            nav_row.append(InlineKeyboardButton('▶️ Next', callback_data=f'approve_nav_next_{sale_log.id}'))
         nav_row.append(InlineKeyboardButton('🔝 Latest', callback_data='approve_nav_latest'))
         
         if nav_row:
@@ -1886,15 +1886,15 @@ All sales have been processed.
 **Navigate through tickets or reject this sale.**
         '''
         
-        # Build navigation keyboard
+        # Build navigation keyboard (use sale_log.id for stable navigation)
         keyboard = []
         
         # Navigation row
         nav_row = []
         if current_index > 0:
-            nav_row.append(InlineKeyboardButton('◀️ Previous', callback_data=f'reject_nav_prev_{ticket_num}'))
+            nav_row.append(InlineKeyboardButton('◀️ Previous', callback_data=f'reject_nav_prev_{sale_log.id}'))
         if current_index < total_count - 1:
-            nav_row.append(InlineKeyboardButton('▶️ Next', callback_data=f'reject_nav_next_{ticket_num}'))
+            nav_row.append(InlineKeyboardButton('▶️ Next', callback_data=f'reject_nav_next_{sale_log.id}'))
         nav_row.append(InlineKeyboardButton('🔝 Latest', callback_data='reject_nav_latest'))
         
         if nav_row:
@@ -1913,7 +1913,7 @@ All sales have been processed.
 
 
 async def handle_reject_ticket_navigate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle navigation between rejection tickets (prev, next, latest)."""
+    """Handle navigation between rejection tickets (prev, next, latest) using stable sale_log.id."""
     query = update.callback_query
     await query.answer()
     
@@ -1922,17 +1922,17 @@ async def handle_reject_ticket_navigate(update: Update, context: ContextTypes.DE
         await query.answer('❌ Access denied.', show_alert=True)
         return
     
-    # Parse callback data: reject_nav_{direction}_{current_ticket} or reject_nav_latest
+    # Parse callback data: reject_nav_{direction}_{sale_id} or reject_nav_latest
     parts = query.data.split('_')
     direction = parts[2]  # 'prev', 'next', or 'latest'
-    current_ticket = parts[3] if len(parts) > 3 else None
+    current_sale_id = int(parts[3]) if len(parts) > 3 else None
     
     db = get_db_session()
     try:
         if direction == 'latest':
-            result = navigate_ticket(db, '', 'latest')
+            result = navigate_ticket_by_id(db, 0, 'latest')
         else:
-            result = navigate_ticket(db, current_ticket, direction)
+            result = navigate_ticket_by_id(db, current_sale_id, direction)
         
         if not result:
             await query.answer('No tickets available.', show_alert=True)
@@ -1956,15 +1956,15 @@ async def handle_reject_ticket_navigate(update: Update, context: ContextTypes.DE
 **Navigate through tickets or reject this sale.**
         '''
         
-        # Build navigation keyboard
+        # Build navigation keyboard (use sale_log.id for stable navigation)
         keyboard = []
         
         # Navigation row
         nav_row = []
         if current_index > 0:
-            nav_row.append(InlineKeyboardButton('◀️ Previous', callback_data=f'reject_nav_prev_{ticket_num}'))
+            nav_row.append(InlineKeyboardButton('◀️ Previous', callback_data=f'reject_nav_prev_{sale_log.id}'))
         if current_index < total_count - 1:
-            nav_row.append(InlineKeyboardButton('▶️ Next', callback_data=f'reject_nav_next_{ticket_num}'))
+            nav_row.append(InlineKeyboardButton('▶️ Next', callback_data=f'reject_nav_next_{sale_log.id}'))
         nav_row.append(InlineKeyboardButton('🔝 Latest', callback_data='reject_nav_latest'))
         
         if nav_row:
@@ -2063,15 +2063,15 @@ async def process_approve_ticket_input(update: Update, context: ContextTypes.DEF
 **Navigate through tickets or approve this sale.**
         '''
         
-        # Build navigation keyboard
+        # Build navigation keyboard (use sale_log.id for stable navigation)
         keyboard = []
         
         # Navigation row
         nav_row = []
         if current_index > 0:
-            nav_row.append(InlineKeyboardButton('◀️ Previous', callback_data=f'approve_nav_prev_{ticket_num}'))
+            nav_row.append(InlineKeyboardButton('◀️ Previous', callback_data=f'approve_nav_prev_{sale_log.id}'))
         if current_index < total_count - 1:
-            nav_row.append(InlineKeyboardButton('▶️ Next', callback_data=f'approve_nav_next_{ticket_num}'))
+            nav_row.append(InlineKeyboardButton('▶️ Next', callback_data=f'approve_nav_next_{sale_log.id}'))
         nav_row.append(InlineKeyboardButton('🔝 Latest', callback_data='approve_nav_latest'))
         
         if nav_row:
@@ -2176,15 +2176,15 @@ async def process_reject_ticket_input(update: Update, context: ContextTypes.DEFA
 **Navigate through tickets or reject this sale.**
         '''
         
-        # Build navigation keyboard
+        # Build navigation keyboard (use sale_log.id for stable navigation)
         keyboard = []
         
         # Navigation row
         nav_row = []
         if current_index > 0:
-            nav_row.append(InlineKeyboardButton('◀️ Previous', callback_data=f'reject_nav_prev_{ticket_num}'))
+            nav_row.append(InlineKeyboardButton('◀️ Previous', callback_data=f'reject_nav_prev_{sale_log.id}'))
         if current_index < total_count - 1:
-            nav_row.append(InlineKeyboardButton('▶️ Next', callback_data=f'reject_nav_next_{ticket_num}'))
+            nav_row.append(InlineKeyboardButton('▶️ Next', callback_data=f'reject_nav_next_{sale_log.id}'))
         nav_row.append(InlineKeyboardButton('🔝 Latest', callback_data='reject_nav_latest'))
         
         if nav_row:
