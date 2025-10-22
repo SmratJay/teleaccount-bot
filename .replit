@@ -17,3 +17,24 @@ externalPort = 80
 expertMode = true
 
 [workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Telegram Bot (Dev)"
+
+[[workflows.workflow]]
+name = "Telegram Bot (Dev)"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "echo \"Note: Bot is deployed on AWS EC2. To test on Replit, stop the EC2 instance first to avoid conflicts.\" && python real_main.py"
+
+[workflows.workflow.metadata]
+outputType = "console"

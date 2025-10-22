@@ -253,7 +253,7 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
                 UserService.update_user(db, db_user.id, captcha_verified=True)
                 # Store CAPTCHA verification timestamp for 7-day cache
                 db_user.captcha_verified_at = datetime.now(timezone.utc)
-                logger.info(f"✅ CAPTCHA verified for user {user.id}, cached for 7 days")
+                logger.info(f"💠 CAPTCHA verified for user {user.id}, cached for 7 days")
             
             # Delete the captcha photo message if exists
             captcha_photo_message_id = context.user_data.get('captcha_photo_message_id')
@@ -267,7 +267,7 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
                 context.user_data.pop('captcha_chat_id', None)
             
             success_text = """
-✅ **CAPTCHA Verified Successfully!**
+💠 **CAPTCHA Verified Successfully!**
 
 Great job! You've proven you're human.
 
@@ -328,7 +328,7 @@ async def show_channel_verification(update: Update, context: ContextTypes.DEFAUL
     channels_text = f"""
 🔒 **Step 2/3: Channel Verification**
 
-✅ **CAPTCHA Completed!**
+💠 **CAPTCHA Completed!**
 
 Now please join ALL required channels below:
 
@@ -351,9 +351,11 @@ Now please join ALL required channels below:
     # Create buttons for each channel + verification button
     keyboard = []
     for channel in channels:
-        keyboard.append([InlineKeyboardButton(f"📢 Join {channel['name']}", url=channel['link'])])
+        # Only add button if channel has a link
+        if channel.get('link') and channel['link'].strip():
+            keyboard.append([InlineKeyboardButton(f"📢 Join {channel['name']}", url=channel['link'])])
     
-    keyboard.append([InlineKeyboardButton("✅ Verify Membership", callback_data="verify_channels")])
+    keyboard.append([InlineKeyboardButton("💠 Verify Membership", callback_data="verify_channels")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -401,11 +403,8 @@ async def handle_verify_channels(update: Update, context: ContextTypes.DEFAULT_T
                 chat_identifier = f"@{extracted_username.lstrip('@')}"
 
         if not chat_identifier:
-            logger.error(
-                "Channel configuration missing identifier for membership check: %s",
-                channel
-            )
-            not_joined.append(channel_name)
+            # Skip channels without identifiers (like backup channel with no link)
+            logger.info(f"Skipping channel {channel_name} - no identifier configured")
             continue
 
         try:
@@ -454,13 +453,13 @@ Please join ALL channels and try again.
                     is_verified=True
                 )
             
-            channel_status_line = "✅ All Channels Joined" if not not_joined else "⚠️ Channel Join Skipped"
+            channel_status_line = "💠 All Channels Joined" if not not_joined else "⚠️ Channel Join Skipped"
             success_text = f"""
 🎉 **Verification Complete!**
 
-✅ CAPTCHA Verified
+💠 CAPTCHA Verified
 {channel_status_line}
-✅ Account Activated
+💠 Account Activated
 
 **You now have full access to the platform!**
 

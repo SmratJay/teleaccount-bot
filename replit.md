@@ -4,6 +4,19 @@
 
 A comprehensive Telegram bot platform for selling Telegram accounts. It features advanced security, multi-language support, and automated account configuration. The system manages the entire lifecycle from account verification and sale to post-sale configuration and withdrawal processing. The project aims to provide a robust solution for automated Telegram account vending with strong security and user management capabilities.
 
+## Recent Changes (October 22, 2025)
+
+**Verification Flow UI Updates:**
+- Updated DEFAULT_VERIFICATION_CHANNELS to 2 channels: "MAIN Channel and support" (https://t.me/teleflare_bot_io) and "Backup channel" (no link)
+- Changed verification badge from ✅ to 💠 throughout the entire verification flow (CAPTCHA, channel verification, completion messages)
+- Improved channel handling: channels without links/usernames are automatically skipped in button display and membership verification
+- The Backup channel is listed for users but not enforced, allowing for future configuration
+
+**Deployment Status:**
+- Production bot deployed on AWS EC2 with Neon PostgreSQL database
+- Replit workflow configured for development/testing only (must stop EC2 instance to use)
+- CAPTCHA 7-day cache working correctly with timezone-aware datetime comparison
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.

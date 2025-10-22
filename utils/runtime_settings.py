@@ -28,22 +28,16 @@ DEFAULT_SUPPORT_CONFIG = {
 
 DEFAULT_VERIFICATION_CHANNELS: List[Dict[str, str]] = [
     {
-        "name": "📢 Bot Updates",
-        "username": "telegram_account_bot_updates",
-        "description": "Get the latest bot updates and announcements",
-        "link": "https://t.me/telegram_account_bot_updates",
+        "name": "MAIN Channel and support",
+        "username": "teleflare_bot_io",
+        "description": "Join our main channel for updates and support",
+        "link": "https://t.me/teleflare_bot_io",
     },
     {
-        "name": "💰 Selling Community",
-        "username": "telegram_selling_community",
-        "description": "Join our community of account sellers",
-        "link": "https://t.me/telegram_selling_community",
-    },
-    {
-        "name": "🆘 Support Channel",
-        "username": "telegram_bot_support_channel",
-        "description": "Get help and support from our team",
-        "link": "https://t.me/telegram_bot_support_channel",
+        "name": "Backup channel",
+        "username": "",
+        "description": "Backup communication channel",
+        "link": "",
     },
 ]
 
