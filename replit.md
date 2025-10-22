@@ -6,7 +6,15 @@ A comprehensive Telegram bot platform for selling Telegram accounts. It features
 
 ## Recent Changes (October 22, 2025)
 
-**CAPTCHA Verification Fix (Latest):**
+**Ticket Navigation Stability Fix (Latest):**
+- Fixed critical bug where ticket navigation jumped to wrong sales when other admins approved/rejected tickets concurrently
+- All navigation callbacks now use stable `sale_log.id` instead of ephemeral ticket strings (#0001, #0002)
+- Created `navigate_ticket_by_id()` function for ID-based ticket navigation
+- Updated all approve/reject handlers to use the new ID-based navigation system
+- Ticket numbers (#0001, #0002) are now purely for display; navigation uses database IDs
+- Navigation remains stable even under concurrent ticket processing by multiple admins
+
+**CAPTCHA Verification Fix:**
 - Fixed issue where previously verified users were forced to re-verify on first `/start` after update
 - Added fallback logic: if `captcha_verified_at` is NULL but user has `verification_completed=True`, backfill timestamp and skip verification
 - This handles users who verified before the 7-day cache feature was added
