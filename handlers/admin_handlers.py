@@ -2249,25 +2249,48 @@ async def handle_approve_sale_action(update: Update, context: ContextTypes.DEFAU
         )
         
         if result['success']:
-            # Send notification to seller
+            # Get sale log and seller details
+            sale_log = db.query(AccountSale).filter(AccountSale.id == sale_log_id).first()
+            seller = None
+            if sale_log:
+                seller = db.query(User).filter(User.id == sale_log.seller_id).first()
+            
+            # Send DM notification to seller
             try:
                 from utils.notification_service import get_notification_service
                 notification_service = get_notification_service()
-                if notification_service:
-                    sale_log = db.query(AccountSale).filter(AccountSale.id == sale_log_id).first()
-                    if sale_log:
-                        # Get seller info
-                        seller = db.query(User).filter(User.id == sale_log.seller_id).first()
-                        seller_telegram_id = seller.telegram_user_id if seller else None
-                        if seller_telegram_id:
-                            await notification_service.notify_sale_approved(
-                                user_telegram_id=seller_telegram_id,
-                                phone_number="account",
-                                sale_price=sale_log.sale_price,
-                                admin_notes=result.get('notes')
-                            )
+                if notification_service and sale_log:
+                    seller_telegram_id = seller.telegram_user_id if seller else None
+                    if seller_telegram_id:
+                        await notification_service.notify_sale_approved(
+                            user_telegram_id=seller_telegram_id,
+                            phone_number="account",
+                            sale_price=sale_log.sale_price,
+                            admin_notes=result.get('notes')
+                        )
             except Exception as e:
                 logger.error(f"Error sending approval notification: {e}")
+            
+            # Post notification to main group
+            try:
+                if sale_log and seller:
+                    group_message = f'''
+✅ **SALE APPROVED**
+
+**Seller:** @{seller.username or seller.first_name or 'Unknown'}
+**Account:** {sale_log.account_phone}
+**Price:** ${sale_log.sale_price:.2f}
+**Approved by:** {admin_user.first_name or admin_user.username}
+
+The sale has been approved and the seller has been notified.
+                    '''
+                    await context.bot.send_message(
+                        chat_id='@teleflare_bot_io',
+                        text=group_message,
+                        parse_mode='Markdown'
+                    )
+            except Exception as e:
+                logger.error(f"Error posting to group: {e}")
             
             await query.answer(f'✅ Sale approved!', show_alert=True)
             
@@ -2368,13 +2391,14 @@ async def handle_reject_sale_action(update: Update, context: ContextTypes.DEFAUL
         )
         
         if success:
-            # Send notification to seller
+            # Get seller info
+            seller = db.query(User).filter(User.id == sale_log.seller_id).first()
+            
+            # Send DM notification to seller
             try:
                 from utils.notification_service import get_notification_service
                 notification_service = get_notification_service()
                 if notification_service:
-                    # Get seller info
-                    seller = db.query(User).filter(User.id == sale_log.seller_id).first()
                     seller_telegram_id = seller.telegram_user_id if seller else None
                     if seller_telegram_id:
                         await notification_service.notify_sale_rejected(
@@ -2385,6 +2409,28 @@ async def handle_reject_sale_action(update: Update, context: ContextTypes.DEFAUL
                         )
             except Exception as e:
                 logger.error(f"Error sending rejection notification: {e}")
+            
+            # Post notification to main group
+            try:
+                if seller:
+                    group_message = f'''
+❌ **SALE REJECTED**
+
+**Seller:** @{seller.username or seller.first_name or 'Unknown'}
+**Account:** {sale_log.account_phone}
+**Price:** ${sale_log.sale_price:.2f}
+**Rejected by:** {admin_user.first_name or admin_user.username}
+**Reason:** {rejection_reason}
+
+The sale has been rejected and the seller has been notified.
+                    '''
+                    await context.bot.send_message(
+                        chat_id='@teleflare_bot_io',
+                        text=group_message,
+                        parse_mode='Markdown'
+                    )
+            except Exception as e:
+                logger.error(f"Error posting to group: {e}")
             
             await query.answer('✅ Sale rejected!', show_alert=True)
             
