@@ -363,7 +363,6 @@ Now please join ALL required channels below:
         keyboard.append([InlineKeyboardButton(f"📢 Join {channel['name']}", url=channel['link'])])
     
     keyboard.append([InlineKeyboardButton("✅ Verify Membership", callback_data="verify_channels")])
-    keyboard.append([InlineKeyboardButton("← Back to CAPTCHA", callback_data="start_verification")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     

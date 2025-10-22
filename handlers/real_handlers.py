@@ -47,24 +47,29 @@ async def show_real_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     if update.callback_query:
         await update.callback_query.answer()
     
+    db = None
     try:
         db = get_db_session()
+        
+        from utils.helpers import load_user_language
         try:
-            # Load user's language from database
-            from utils.helpers import load_user_language
             load_user_language(context, user.id)
+        except Exception as lang_error:
+            logger.warning(f"Could not load user language: {lang_error}")
+        
+        db_user = UserService.get_user_by_telegram_id(db, user.id)
+        
+        if not db_user:
+            logger.error(f"User {user.id} not found in database during main menu display")
+            error_keyboard = [[InlineKeyboardButton("🔄 Restart", callback_data="start")]]
+            message_text = "⚠️ **User not found. Please restart with /start or click the button below.**"
+            reply_markup = InlineKeyboardMarkup(error_keyboard)
+        else:
+            username_display = f"@{user.username}" if user.username else f"User {user.id}"
+            balance = getattr(db_user, 'balance', 0.00)
+            is_admin = bool(getattr(db_user, 'is_admin', False))
             
-            db_user = UserService.get_user_by_telegram_id(db, user.id)
-            reply_markup = InlineKeyboardMarkup([])
-            if not db_user:
-                logger.error(f"User {user.id} not found in database during main menu display")
-                message_text = "⚠️ **User not found. Please restart with /start**"
-            else:
-                username_display = f"@{user.username}" if user.username else f"User {user.id}"
-                balance = db_user.balance if hasattr(db_user, 'balance') else 0.00
-                is_admin = bool(getattr(db_user, 'is_admin', False))
-                
-                message_text = f"""
+            message_text = f"""
 🎉 **Welcome to Real Account Marketplace!**
 
 👤 **User:** {username_display}
@@ -72,8 +77,9 @@ async def show_real_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
 ✅ **Status:** Verified
 
 **What would you like to do?**
-                """
-                
+            """
+            
+            try:
                 main_menu_markup = get_main_menu_keyboard(is_admin=is_admin)
                 if isinstance(main_menu_markup, InlineKeyboardMarkup):
                     reply_markup = main_menu_markup
@@ -81,36 +87,72 @@ async def show_real_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
                     reply_markup = InlineKeyboardMarkup(main_menu_markup)
                 else:
                     logger.warning("Main menu keyboard helper returned empty value; using fallback layout")
-        finally:
-            close_db_session(db)
+                    reply_markup = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🚀 Sell Account", callback_data="start_real_selling")],
+                        [InlineKeyboardButton("💰 Balance", callback_data="check_balance")],
+                        [InlineKeyboardButton("← Back", callback_data="start")]
+                    ])
+            except Exception as keyboard_error:
+                logger.error(f"Error building keyboard: {keyboard_error}")
+                reply_markup = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Retry", callback_data="main_menu")]
+                ])
         
-        if update.callback_query:
-            await update.callback_query.edit_message_text(
-                message_text,
-                parse_mode='Markdown',
-                reply_markup=reply_markup
-            )
-        else:
-            await update.message.reply_text(
-                message_text,
-                parse_mode='Markdown',
-                reply_markup=reply_markup
-            )
+        try:
+            if update.callback_query:
+                await update.callback_query.edit_message_text(
+                    message_text,
+                    parse_mode='Markdown',
+                    reply_markup=reply_markup
+                )
+            else:
+                await update.message.reply_text(
+                    message_text,
+                    parse_mode='Markdown',
+                    reply_markup=reply_markup
+                )
+        except Exception as send_error:
+            logger.error(f"Failed to send main menu message: {send_error}")
+            try:
+                if update.message:
+                    await update.message.reply_text(
+                        "⚠️ Error displaying menu. Please try /start again.",
+                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Restart", callback_data="start")]])
+                    )
+            except Exception:
+                pass
+                
     except Exception as e:
-        logger.error(f"Error in show_real_main_menu: {e}")
-        error_keyboard = [[InlineKeyboardButton("🔄 Restart", callback_data="main_menu")]]
-        error_text = "❌ Error loading main menu. Please try again."
+        logger.error(f"Critical error in show_real_main_menu: {e}", exc_info=True)
+        error_keyboard = [[InlineKeyboardButton("🔄 Restart", callback_data="start")]]
+        error_text = """
+❌ **Error Loading Menu**
+
+Something went wrong. Please try restarting the bot.
+
+**What to do:**
+• Click "Restart" below
+• If issue persists, send /start
+        """
         
-        if update.callback_query:
-            await update.callback_query.edit_message_text(
-                error_text,
-                reply_markup=InlineKeyboardMarkup(error_keyboard)
-            )
-        else:
-            await update.message.reply_text(
-                error_text,
-                reply_markup=InlineKeyboardMarkup(error_keyboard)
-            )
+        try:
+            if update.callback_query:
+                await update.callback_query.edit_message_text(
+                    error_text,
+                    parse_mode='Markdown',
+                    reply_markup=InlineKeyboardMarkup(error_keyboard)
+                )
+            else:
+                await update.message.reply_text(
+                    error_text,
+                    parse_mode='Markdown',
+                    reply_markup=InlineKeyboardMarkup(error_keyboard)
+                )
+        except Exception as fallback_error:
+            logger.error(f"Failed to show error message: {fallback_error}")
+    finally:
+        if db:
+            close_db_session(db)
 
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

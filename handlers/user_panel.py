@@ -34,32 +34,47 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         db_user = UserService.get_user_by_telegram_id(db, user.id)
         
         if not db_user:
-            await update.callback_query.edit_message_text("❌ User not found.")
+            keyboard = [[InlineKeyboardButton("🔄 Restart Bot", callback_data="main_menu")]]
+            await update.callback_query.edit_message_text(
+                "❌ User not found. Please restart the bot.",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
             return
         
-        # Get recent withdrawals
-        withdrawals = db.query(Withdrawal).filter(
-            Withdrawal.user_id == db_user.id
-        ).order_by(Withdrawal.created_at.desc()).limit(5).all()
+        balance = getattr(db_user, 'balance', 0.00)
+        total_earnings = getattr(db_user, 'total_earnings', 0.00)
+        total_withdrawn = getattr(db_user, 'total_withdrawn', 0.00)
+        total_accounts_sold = getattr(db_user, 'total_accounts_sold', 0)
+        
+        withdrawals = []
+        try:
+            withdrawals = db.query(Withdrawal).filter(
+                Withdrawal.user_id == db_user.id
+            ).order_by(Withdrawal.created_at.desc()).limit(5).all()
+        except Exception as withdrawal_error:
+            logger.warning(f"Could not fetch withdrawals: {withdrawal_error}")
         
         balance_text = f"""
 💳 **Your Balance**
 
-**Current Balance:** `${db_user.balance:.2f}`
-**Total Earnings:** `${db_user.total_earnings:.2f}`
-**Total Withdrawn:** `${db_user.total_withdrawn:.2f}`
+**Current Balance:** `${balance:.2f}`
+**Total Earnings:** `${total_earnings:.2f}`
+**Total Withdrawn:** `${total_withdrawn:.2f}`
 
 **Account Statistics:**
-• Total Accounts Sold: {db_user.total_accounts_sold}
-• Average Earning per Account: `${(db_user.total_earnings / max(db_user.total_accounts_sold, 1)):.2f}`
+• Total Accounts Sold: {total_accounts_sold}
+• Average Earning per Account: `${(total_earnings / max(total_accounts_sold, 1)):.2f}`
 
 **Recent Transactions:**
 """
         
         if withdrawals:
             for w in withdrawals:
-                status_icon = "✅" if w.status == WithdrawalStatus.COMPLETED else "⏳"
-                balance_text += f"\n{status_icon} Withdrawal: `${w.amount:.2f}` - {w.created_at.strftime('%b %d')}"
+                try:
+                    status_icon = "✅" if w.status == WithdrawalStatus.COMPLETED else "⏳"
+                    balance_text += f"\n{status_icon} Withdrawal: `${w.amount:.2f}` - {w.created_at.strftime('%b %d')}"
+                except Exception as tx_error:
+                    logger.warning(f"Error formatting transaction: {tx_error}")
         else:
             balance_text += "\n_No recent transactions_"
         
@@ -76,8 +91,27 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
     
     except Exception as e:
-        logger.error(f"Error in handle_balance: {e}")
-        await update.callback_query.edit_message_text("❌ Error loading balance.")
+        logger.error(f"Error in handle_balance: {e}", exc_info=True)
+        keyboard = [[InlineKeyboardButton("🔄 Try Again", callback_data="check_balance")],
+                    [InlineKeyboardButton("← Back to Menu", callback_data="main_menu")]]
+        error_text = """
+❌ **Error Loading Balance**
+
+We couldn't load your balance information. This might be a temporary issue.
+
+**What to try:**
+• Click "Try Again" below
+• Go back to menu and try later
+• Contact support if the issue persists
+        """
+        try:
+            await update.callback_query.edit_message_text(
+                error_text,
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except Exception as fallback_error:
+            logger.error(f"Failed to show error message: {fallback_error}")
     
     finally:
         close_db_session(db)
@@ -125,8 +159,26 @@ async def handle_sales_history(update: Update, context: ContextTypes.DEFAULT_TYP
         )
     
     except Exception as e:
-        logger.error(f"Error in handle_sales_history: {e}")
-        await update.callback_query.edit_message_text("❌ Error loading sales history.")
+        logger.error(f"Error in handle_sales_history: {e}", exc_info=True)
+        keyboard = [[InlineKeyboardButton("🔄 Try Again", callback_data="sales_history")],
+                    [InlineKeyboardButton("← Back to Menu", callback_data="main_menu")]]
+        error_text = """
+❌ **Error Loading Sales History**
+
+We couldn't load your sales history. This might be a temporary issue.
+
+**What to try:**
+• Click "Try Again" below
+• Go back to menu and try later
+        """
+        try:
+            await update.callback_query.edit_message_text(
+                error_text,
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except Exception:
+            pass
     
     finally:
         close_db_session(db)
@@ -184,10 +236,22 @@ async def handle_account_details(update: Update, context: ContextTypes.DEFAULT_T
         )
         
     except Exception as e:
-        logger.error(f"Error in account details: {e}")
-        await update.callback_query.edit_message_text(
-            translation_service.get_text('error_loading', user_lang)
-        )
+        logger.error(f"Error in account details: {e}", exc_info=True)
+        keyboard = [[InlineKeyboardButton(translation_service.get_text('try_again', user_lang), callback_data="status")],
+                    [InlineKeyboardButton(translation_service.get_text('back_menu', user_lang), callback_data="main_menu")]]
+        error_text = f"""
+❌ {translation_service.get_text('error_loading', user_lang)}
+
+{translation_service.get_text('temporary_issue', user_lang)}
+        """
+        try:
+            await update.callback_query.edit_message_text(
+                error_text,
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except Exception:
+            pass
     finally:
         close_db_session(db)
 
