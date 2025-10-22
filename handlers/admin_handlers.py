@@ -22,6 +22,8 @@ USER_FIELD_VALUE = 5
 BALANCE_USERNAME_INPUT = 6
 BALANCE_AMOUNT_INPUT = 7
 TICKET_NUMBER_INPUT = 8  # For ticket-based approval/rejection
+APPROVE_TICKET_INPUT = 9
+REJECT_TICKET_INPUT = 10
 
 # ==================== TICKET SYSTEM HELPER FUNCTIONS ====================
 
@@ -1111,6 +1113,49 @@ def setup_admin_handlers(application) -> None:
     )
     application.add_handler(balance_adjust_conv)
     
+    # Ticket input conversation handlers (for approve/reject by ticket number)
+    approve_ticket_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(start_approve_ticket_input, pattern='^approve_type_ticket$')
+        ],
+        states={
+            APPROVE_TICKET_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, process_approve_ticket_input)
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(handle_approve_sales_tickets, pattern='^approve_sales_tickets$'),
+            CommandHandler('cancel', cancel_ticket_input)
+        ],
+        name="approve_ticket_conversation",
+        per_user=True,
+        per_chat=True,
+        allow_reentry=True,
+        conversation_timeout=300
+    )
+    application.add_handler(approve_ticket_conv)
+    
+    reject_ticket_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(start_reject_ticket_input, pattern='^reject_type_ticket$')
+        ],
+        states={
+            REJECT_TICKET_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, process_reject_ticket_input)
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(handle_reject_sales_tickets, pattern='^reject_sales_tickets$'),
+            CommandHandler('cancel', cancel_ticket_input)
+        ],
+        name="reject_ticket_conversation",
+        per_user=True,
+        per_chat=True,
+        allow_reentry=True,
+        conversation_timeout=300
+    )
+    application.add_handler(reject_ticket_conv)
+    
     # Account Freeze Management handlers
     application.add_handler(CallbackQueryHandler(handle_account_freeze_panel, pattern='^admin_freeze_panel$'))
     application.add_handler(CallbackQueryHandler(handle_view_frozen_accounts, pattern='^view_frozen_accounts$'))
@@ -1935,6 +1980,237 @@ async def handle_reject_ticket_navigate(update: Update, context: ContextTypes.DE
         
     finally:
         close_db_session(db)
+
+
+async def start_approve_ticket_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start conversation to input ticket number for approval."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    if not is_admin(user.id):
+        await query.answer('❌ Access denied.', show_alert=True)
+        return ConversationHandler.END
+    
+    text = '''
+🔢 **ENTER TICKET NUMBER**
+
+Please type the ticket number you want to approve.
+
+**Examples:**
+• `0001` or `#0001`
+• `0042` or `#0042`
+
+Type /cancel to go back.
+    '''
+    
+    keyboard = [[InlineKeyboardButton('🔙 Cancel', callback_data='approve_sales_tickets')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+    return APPROVE_TICKET_INPUT
+
+
+async def process_approve_ticket_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Process the typed ticket number and show that ticket for approval."""
+    user = update.effective_user
+    if not is_admin(user.id):
+        await update.message.reply_text('❌ Access denied.')
+        return ConversationHandler.END
+    
+    # Get ticket number from message
+    ticket_input = update.message.text.strip()
+    
+    # Normalize format: remove # if present, pad with zeros
+    ticket_input = ticket_input.replace('#', '')
+    
+    try:
+        ticket_num_int = int(ticket_input)
+        ticket_num = format_ticket_number(ticket_num_int)
+    except ValueError:
+        await update.message.reply_text(
+            '❌ Invalid ticket number. Please enter a valid number like `0001` or `#0001`.\n\nType /cancel to go back.',
+            parse_mode='Markdown'
+        )
+        return APPROVE_TICKET_INPUT
+    
+    db = get_db_session()
+    try:
+        result = get_sale_by_ticket_number(db, ticket_num)
+        
+        if not result:
+            await update.message.reply_text(
+                f'❌ Ticket {ticket_num} not found. Please check the ticket number and try again.\n\nType /cancel to go back.',
+                parse_mode='Markdown'
+            )
+            return APPROVE_TICKET_INPUT
+        
+        ticket_num, sale_log, current_index, total_count = result
+        
+        # Build ticket view
+        text = f'''
+✅ **APPROVE SALE - TICKET {ticket_num}**
+
+**Ticket:** {ticket_num} of {total_count} pending
+**Account:** {sale_log.account_phone}
+**Seller:** @{sale_log.seller_username or 'Unknown'} ({sale_log.seller_name or 'Unknown'})
+**Price:** ${sale_log.sale_price:.2f}
+**Status:** {sale_log.status.value}
+**Created:** {sale_log.created_at.strftime('%Y-%m-%d %H:%M') if sale_log.created_at else 'Unknown'}
+
+{'❄️ **FROZEN:** ' + (sale_log.account_freeze_reason or 'No reason') if sale_log.account_is_frozen else '🟢 **Account Status:** Active'}
+
+**Navigate through tickets or approve this sale.**
+        '''
+        
+        # Build navigation keyboard
+        keyboard = []
+        
+        # Navigation row
+        nav_row = []
+        if current_index > 0:
+            nav_row.append(InlineKeyboardButton('◀️ Previous', callback_data=f'approve_nav_prev_{ticket_num}'))
+        if current_index < total_count - 1:
+            nav_row.append(InlineKeyboardButton('▶️ Next', callback_data=f'approve_nav_next_{ticket_num}'))
+        nav_row.append(InlineKeyboardButton('🔝 Latest', callback_data='approve_nav_latest'))
+        
+        if nav_row:
+            keyboard.append(nav_row)
+        
+        # Action buttons
+        if sale_log.account_is_frozen:
+            keyboard.append([InlineKeyboardButton('❄️ Cannot Approve (Frozen)', callback_data='noop')])
+        else:
+            keyboard.append([InlineKeyboardButton('✅ Approve This Sale', callback_data=f'approve_sale_{sale_log.id}')])
+        
+        keyboard.append([InlineKeyboardButton('🔢 Type Ticket Number', callback_data='approve_type_ticket')])
+        keyboard.append([InlineKeyboardButton('🔙 Back', callback_data='sale_logs_panel')])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+        return ConversationHandler.END
+        
+    finally:
+        close_db_session(db)
+
+
+async def start_reject_ticket_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start conversation to input ticket number for rejection."""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    if not is_admin(user.id):
+        await query.answer('❌ Access denied.', show_alert=True)
+        return ConversationHandler.END
+    
+    text = '''
+🔢 **ENTER TICKET NUMBER**
+
+Please type the ticket number you want to reject.
+
+**Examples:**
+• `0001` or `#0001`
+• `0042` or `#0042`
+
+Type /cancel to go back.
+    '''
+    
+    keyboard = [[InlineKeyboardButton('🔙 Cancel', callback_data='reject_sales_tickets')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+    return REJECT_TICKET_INPUT
+
+
+async def process_reject_ticket_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Process the typed ticket number and show that ticket for rejection."""
+    user = update.effective_user
+    if not is_admin(user.id):
+        await update.message.reply_text('❌ Access denied.')
+        return ConversationHandler.END
+    
+    # Get ticket number from message
+    ticket_input = update.message.text.strip()
+    
+    # Normalize format: remove # if present, pad with zeros
+    ticket_input = ticket_input.replace('#', '')
+    
+    try:
+        ticket_num_int = int(ticket_input)
+        ticket_num = format_ticket_number(ticket_num_int)
+    except ValueError:
+        await update.message.reply_text(
+            '❌ Invalid ticket number. Please enter a valid number like `0001` or `#0001`.\n\nType /cancel to go back.',
+            parse_mode='Markdown'
+        )
+        return REJECT_TICKET_INPUT
+    
+    db = get_db_session()
+    try:
+        result = get_sale_by_ticket_number(db, ticket_num)
+        
+        if not result:
+            await update.message.reply_text(
+                f'❌ Ticket {ticket_num} not found. Please check the ticket number and try again.\n\nType /cancel to go back.',
+                parse_mode='Markdown'
+            )
+            return REJECT_TICKET_INPUT
+        
+        ticket_num, sale_log, current_index, total_count = result
+        
+        # Build ticket view
+        text = f'''
+❌ **REJECT SALE - TICKET {ticket_num}**
+
+**Ticket:** {ticket_num} of {total_count} pending
+**Account:** {sale_log.account_phone}
+**Seller:** @{sale_log.seller_username or 'Unknown'} ({sale_log.seller_name or 'Unknown'})
+**Price:** ${sale_log.sale_price:.2f}
+**Status:** {sale_log.status.value}
+**Created:** {sale_log.created_at.strftime('%Y-%m-%d %H:%M') if sale_log.created_at else 'Unknown'}
+
+{'❄️ **FROZEN:** ' + (sale_log.account_freeze_reason or 'No reason') if sale_log.account_is_frozen else '🟢 **Account Status:** Active'}
+
+**Navigate through tickets or reject this sale.**
+        '''
+        
+        # Build navigation keyboard
+        keyboard = []
+        
+        # Navigation row
+        nav_row = []
+        if current_index > 0:
+            nav_row.append(InlineKeyboardButton('◀️ Previous', callback_data=f'reject_nav_prev_{ticket_num}'))
+        if current_index < total_count - 1:
+            nav_row.append(InlineKeyboardButton('▶️ Next', callback_data=f'reject_nav_next_{ticket_num}'))
+        nav_row.append(InlineKeyboardButton('🔝 Latest', callback_data='reject_nav_latest'))
+        
+        if nav_row:
+            keyboard.append(nav_row)
+        
+        # Action button
+        keyboard.append([InlineKeyboardButton('❌ Reject This Sale', callback_data=f'reject_sale_{sale_log.id}')])
+        keyboard.append([InlineKeyboardButton('🔢 Type Ticket Number', callback_data='reject_type_ticket')])
+        keyboard.append([InlineKeyboardButton('🔙 Back', callback_data='sale_logs_panel')])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        
+        return ConversationHandler.END
+        
+    finally:
+        close_db_session(db)
+
+
+async def cancel_ticket_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancel ticket input conversation."""
+    if update.callback_query:
+        await update.callback_query.answer()
+    else:
+        await update.message.reply_text('Ticket input cancelled.')
+    return ConversationHandler.END
 
 
 # ==================== END NEW TICKET SYSTEM ====================
