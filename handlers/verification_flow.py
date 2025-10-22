@@ -71,24 +71,21 @@ async def handle_start_verification(update: Update, context: ContextTypes.DEFAUL
     # Check if this is a CAPTCHA refresh (user clicked "New CAPTCHA" button)
     is_refresh = 'captcha_photo_message_id' in context.user_data
     
-    # Store CAPTCHA data in database instead of context
+    # Store CAPTCHA data in database (optimized - no image_path)
     db = get_db_session()
     try:
         db_user = UserService.get_user_by_telegram_id(db, user.id)
         if db_user:
-            # Store CAPTCHA data in user record
             db_user.captcha_answer = captcha_data['answer']
             db_user.captcha_type = captcha_data['type']
-            db_user.captcha_image_path = captcha_data.get('image_path')
             db_user.verification_step = 1
             db.commit()
     finally:
         close_db_session(db)
     
-    # Store CAPTCHA answer in context as backup
+    # Store CAPTCHA answer in context as backup (no image path needed)
     context.user_data['captcha_answer'] = captcha_data['answer']
     context.user_data['captcha_type'] = captcha_data['type']
-    context.user_data['captcha_image_path'] = captcha_data.get('image_path')
     context.user_data['verification_step'] = 1
     
     # Only send/edit prompt message if this is NOT a refresh
@@ -174,8 +171,8 @@ async def handle_start_verification(update: Update, context: ContextTypes.DEFAUL
         if update.callback_query:
             await update.callback_query.answer("🔄 Generating new CAPTCHA...")
     
-    # If visual captcha, send the image
-    if captcha_data['type'] == 'visual' and captcha_data.get('image_path'):
+    # If visual captcha, send the image (OPTIMIZED: from memory, not disk)
+    if captcha_data['type'] == 'visual' and captcha_data.get('image_bytes'):
         try:
             # Delete old CAPTCHA image if it exists (prevents chat bloat)
             if 'captcha_photo_message_id' in context.user_data and 'captcha_chat_id' in context.user_data:
@@ -188,24 +185,23 @@ async def handle_start_verification(update: Update, context: ContextTypes.DEFAUL
                 except Exception as delete_error:
                     logger.warning(f"Could not delete old CAPTCHA image: {delete_error}")
             
-            # Send new CAPTCHA image
-            with open(captcha_data['image_path'], 'rb') as photo:
-                if update.callback_query and update.callback_query.message:
-                    photo_message = await update.callback_query.message.reply_photo(
-                        photo=photo,
-                        caption="🔍 **Enter the text shown in this image**",
-                        parse_mode='Markdown'
-                    )
-                    context.user_data['captcha_photo_message_id'] = photo_message.message_id
-                    context.user_data['captcha_chat_id'] = photo_message.chat_id
-                elif update.message:
-                    photo_message = await update.message.reply_photo(
-                        photo=photo,
-                        caption="🔍 **Enter the text shown in this image**",
-                        parse_mode='Markdown'
-                    )
-                    context.user_data['captcha_photo_message_id'] = photo_message.message_id
-                    context.user_data['captcha_chat_id'] = photo_message.chat_id
+            # Send CAPTCHA image directly from memory (INSTANT - no disk I/O!)
+            if update.callback_query and update.callback_query.message:
+                photo_message = await update.callback_query.message.reply_photo(
+                    photo=captcha_data['image_bytes'],
+                    caption="🔍 **Enter the text shown in this image**",
+                    parse_mode='Markdown'
+                )
+                context.user_data['captcha_photo_message_id'] = photo_message.message_id
+                context.user_data['captcha_chat_id'] = photo_message.chat_id
+            elif update.message:
+                photo_message = await update.message.reply_photo(
+                    photo=captcha_data['image_bytes'],
+                    caption="🔍 **Enter the text shown in this image**",
+                    parse_mode='Markdown'
+                )
+                context.user_data['captcha_photo_message_id'] = photo_message.message_id
+                context.user_data['captcha_chat_id'] = photo_message.chat_id
         except Exception as e:
             logger.error(f"Error sending captcha image: {e}")
             # Fallback to text-based captcha
@@ -246,18 +242,8 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
         
         # Get CAPTCHA data from database (with context as fallback)
         correct_answer = (db_user.captcha_answer or context.user_data.get('captcha_answer', '')).lower().strip()
-        captcha_image_path = db_user.captcha_image_path or context.user_data.get('captcha_image_path')
         
         logger.info(f"CAPTCHA verification for user {user.id}: answer='{user_answer}', expected='{correct_answer}'")
-        
-        # Clean up visual captcha image if exists
-        if captcha_image_path:
-            captcha_service = CaptchaService()
-            captcha_service.cleanup_captcha_image(captcha_image_path)
-            # Clear from database and context
-            if db_user:
-                db_user.captcha_image_path = None
-            context.user_data.pop('captcha_image_path', None)
         
         if user_answer.lower() == correct_answer:
             # CAPTCHA passed - update user status

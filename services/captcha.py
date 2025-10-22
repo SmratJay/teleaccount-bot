@@ -55,27 +55,21 @@ class CaptchaService:
                 }
 
     async def generate_visual_captcha(self) -> Dict[str, Any]:
-        """Generate a visual image captcha."""
+        """Generate a visual image captcha - optimized for speed."""
         try:
-            # Generate random text for captcha
+            # Generate random text for captcha (shorter = faster to type)
             captcha_text = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
             
-            # Generate captcha image
+            # Generate captcha image (in memory - no disk I/O)
             image = self.image_captcha.generate(captcha_text)
             
-            # Save image to temporary file
-            image_filename = f"captcha_{random.randint(10000, 99999)}.png"
-            image_path = os.path.join(self.captcha_dir, image_filename)
-            
-            # Write image to file
-            with open(image_path, 'wb') as f:
-                f.write(image.getvalue())
-            
+            # Return image bytes directly - NO file saving!
             return {
                 "type": "visual",
                 "question": f"Enter the text shown in the image:",
                 "answer": captcha_text.lower(),
-                "image_path": image_path,
+                "image_bytes": image.getvalue(),  # Direct bytes, no file
+                "image_path": None,  # No file path needed
                 "captcha_text": captcha_text
             }
             
@@ -87,6 +81,7 @@ class CaptchaService:
                 "type": "visual",
                 "question": "Enter the text shown in the image:",
                 "answer": captcha_text.lower(),
+                "image_bytes": None,
                 "image_path": None,
                 "captcha_text": captcha_text
             }

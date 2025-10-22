@@ -187,19 +187,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 close_db_session(db)
             return
     
-    # Main menu handling
+    # Main menu handling (optimized - no file cleanup needed)
     if query.data == "main_menu":
-        captcha_image_path = context.user_data.get('captcha_image_path')
-        if captcha_image_path:
-            try:
-                from services.captcha import CaptchaService
-                captcha_service = CaptchaService()
-                captcha_service.cleanup_captcha_image(captcha_image_path)
-                context.user_data.pop('captcha_image_path', None)
-                logger.info(f"✅ Cleaned up CAPTCHA image file: {captcha_image_path}")
-            except Exception as e:
-                logger.error(f"Error cleaning up CAPTCHA image: {e}")
-        
         context.user_data.pop('captcha_answer', None)
         context.user_data.pop('captcha_type', None)
         context.user_data.pop('verification_step', None)
