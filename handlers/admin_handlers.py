@@ -19,6 +19,8 @@ EDIT_USER_DATA = 2
 USER_ID_INPUT = 3
 USER_FIELD_SELECT = 4
 USER_FIELD_VALUE = 5
+BALANCE_USERNAME_INPUT = 6
+BALANCE_AMOUNT_INPUT = 7
 
 async def handle_admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Main admin panel with all specified features."""
@@ -303,27 +305,19 @@ async def process_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         close_db_session(db)
 
 async def handle_admin_user_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle manual user data editing."""
+    """Handle manual user balance adjustment."""
     await update.callback_query.answer()
     
     edit_text = """
-👥 **MANUAL USER DATA EDITOR**
+💰 **ADJUST USER BALANCE**
 
-Manually edit any user's data or status in the bot system.
+**Adjust Balance** - Add or subtract from user balance
 
-**Available Operations:**
-• 🔍 **Search User** - Find user by Telegram ID or username
-• ✏️ **Edit User Data** - Modify name, balance, status, etc.
-• 🔄 **Update Status** - Change user status (Active/Frozen/Banned)
-• 📊 **View User Details** - See complete user information
-• 💰 **Adjust Balance** - Add or subtract from user balance
-
-**Security Notice:** All changes are logged for audit purposes.
-
-Enter the **Telegram User ID** of the user you want to edit:
+Click the button below to start:
     """
     
     keyboard = [
+        [InlineKeyboardButton("💰 Add/Subtract Balance", callback_data="adjust_balance_start")],
         [InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_panel")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -334,7 +328,237 @@ Enter the **Telegram User ID** of the user you want to edit:
         reply_markup=reply_markup
     )
     
-    return USER_ID_INPUT
+    return ConversationHandler.END
+
+# ========================================
+# BALANCE ADJUSTMENT CONVERSATION
+# ========================================
+
+async def start_balance_adjustment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start balance adjustment conversation - ask for username."""
+    await update.callback_query.answer()
+    
+    username_prompt = """
+💰 **ADJUST USER BALANCE**
+
+**Step 1/2:** Enter the username
+
+Please enter the username (with @ symbol):
+
+**Example:** `@johndoe`
+    """
+    
+    keyboard = [[InlineKeyboardButton("❌ Cancel", callback_data="admin_user_edit")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.callback_query.edit_message_text(
+        username_prompt,
+        parse_mode='Markdown',
+        reply_markup=reply_markup
+    )
+    
+    return BALANCE_USERNAME_INPUT
+
+async def process_balance_username(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Process username and ask for amount."""
+    username_input = update.message.text.strip()
+    
+    # Remove @ if present
+    if username_input.startswith('@'):
+        username = username_input[1:]
+    else:
+        username = username_input
+    
+    # Find user in database
+    db = get_db_session()
+    try:
+        target_user = db.query(User).filter(User.username == username).first()
+        
+        if not target_user:
+            await update.message.reply_text(
+                f"❌ **User Not Found**\n\nNo user found with username: `@{username}`\n\nPlease try again:",
+                parse_mode='Markdown'
+            )
+            return BALANCE_USERNAME_INPUT
+        
+        # Store user info in context
+        context.user_data['balance_adjust_user_id'] = target_user.telegram_user_id
+        context.user_data['balance_adjust_username'] = username
+        context.user_data['balance_adjust_current_balance'] = float(target_user.balance)
+        
+        amount_prompt = f"""
+💰 **ADJUST BALANCE FOR @{username}**
+
+**Current Balance:** \\${target_user.balance:.2f}
+
+**Step 2/2:** Enter the amount
+
+• Use **+** to add (e.g., `+50` adds $50)
+• Use **-** to subtract (e.g., `-25` subtracts $25)
+
+**Examples:**
+• `+100` → Add $100
+• `-50` → Subtract $50
+
+**Enter amount:**
+        """
+        
+        await update.message.reply_text(
+            amount_prompt,
+            parse_mode='Markdown'
+        )
+        
+        return BALANCE_AMOUNT_INPUT
+        
+    except Exception as e:
+        logger.error(f"Error finding user for balance adjustment: {e}")
+        await update.message.reply_text(
+            "❌ **Database Error**\n\nError occurred while searching for user. Try again.",
+            parse_mode='Markdown'
+        )
+        return BALANCE_USERNAME_INPUT
+    finally:
+        close_db_session(db)
+
+async def process_balance_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Process amount and update balance in database."""
+    amount_input = update.message.text.strip()
+    
+    # Parse amount (handle +/- prefix)
+    try:
+        if amount_input.startswith('+') or amount_input.startswith('-'):
+            adjustment = float(amount_input)
+            is_add = amount_input.startswith('+')
+        else:
+            await update.message.reply_text(
+                "❌ **Invalid Format**\n\nPlease use **+** or **-** prefix.\n\n"
+                "Examples: `+100` or `-50`\n\nTry again:",
+                parse_mode='Markdown'
+            )
+            return BALANCE_AMOUNT_INPUT
+    except ValueError:
+        await update.message.reply_text(
+            "❌ **Invalid Amount**\n\nPlease enter a valid number with + or - prefix.\n\n"
+            "Examples: `+100` or `-50`\n\nTry again:",
+            parse_mode='Markdown'
+        )
+        return BALANCE_AMOUNT_INPUT
+    
+    # Get user data from context
+    target_user_id = context.user_data.get('balance_adjust_user_id')
+    username = context.user_data.get('balance_adjust_username')
+    current_balance = context.user_data.get('balance_adjust_current_balance', 0.0)
+    
+    if not target_user_id:
+        await update.message.reply_text(
+            "❌ **Session Error**\n\nPlease start again.",
+            parse_mode='Markdown'
+        )
+        return ConversationHandler.END
+    
+    # Update balance in database
+    db = get_db_session()
+    try:
+        target_user = UserService.get_user_by_telegram_id(db, target_user_id)
+        
+        if not target_user:
+            await update.message.reply_text(
+                "❌ **User Not Found**\n\nUser no longer exists.",
+                parse_mode='Markdown'
+            )
+            return ConversationHandler.END
+        
+        # Calculate new balance
+        old_balance = float(target_user.balance)
+        new_balance = old_balance + adjustment
+        
+        # Prevent negative balance
+        if new_balance < 0:
+            await update.message.reply_text(
+                f"❌ **Invalid Operation**\n\n"
+                f"Cannot subtract \\${abs(adjustment):.2f} from \\${old_balance:.2f}\n"
+                f"This would result in negative balance (\\${new_balance:.2f})\n\n"
+                f"Please try a different amount.",
+                parse_mode='Markdown'
+            )
+            return BALANCE_AMOUNT_INPUT
+        
+        # Update balance
+        target_user.balance = new_balance
+        db.commit()
+        
+        # Log admin activity
+        admin_user = UserService.get_user_by_telegram_id(db, update.effective_user.id)
+        if admin_user:
+            action_type = "BALANCE_ADD" if is_add else "BALANCE_SUBTRACT"
+            ActivityLogService.log_action(
+                db, admin_user.id, action_type,
+                f"Adjusted @{username}'s balance by ${adjustment:+.2f}",
+                extra_data=json.dumps({
+                    "target_user_id": target_user_id,
+                    "username": username,
+                    "old_balance": old_balance,
+                    "adjustment": adjustment,
+                    "new_balance": new_balance
+                })
+            )
+        
+        # Show success message
+        action_word = "added" if is_add else "subtracted"
+        success_text = f"""
+✅ **BALANCE UPDATED SUCCESSFULLY**
+
+**User:** @{username}
+**Action:** {action_word.title()} \\${abs(adjustment):.2f}
+
+**Balance Changes:**
+• **Previous:** \\${old_balance:.2f}
+• **Adjustment:** ${adjustment:+.2f}
+• **New Balance:** \\${new_balance:.2f}
+
+✅ Database updated in real-time!
+        """
+        
+        keyboard = [
+            [InlineKeyboardButton("💰 Adjust Another", callback_data="adjust_balance_start")],
+            [InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_panel")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            success_text,
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+        
+        # Clear context
+        context.user_data.pop('balance_adjust_user_id', None)
+        context.user_data.pop('balance_adjust_username', None)
+        context.user_data.pop('balance_adjust_current_balance', None)
+        
+        return ConversationHandler.END
+        
+    except Exception as e:
+        logger.error(f"Error updating balance: {e}")
+        await update.message.reply_text(
+            f"❌ **Update Failed**\n\nError: {str(e)}\n\nPlease try again.",
+            parse_mode='Markdown'
+        )
+        return ConversationHandler.END
+    finally:
+        close_db_session(db)
+
+async def cancel_balance_adjustment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancel balance adjustment conversation."""
+    context.user_data.pop('balance_adjust_user_id', None)
+    context.user_data.pop('balance_adjust_username', None)
+    context.user_data.pop('balance_adjust_current_balance', None)
+    
+    await update.message.reply_text(
+        "❌ **Balance Adjustment Cancelled**",
+        parse_mode='Markdown'
+    )
+    return ConversationHandler.END
 
 async def process_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Process user ID input for editing."""
@@ -780,6 +1004,33 @@ def setup_admin_handlers(application) -> None:
         conversation_timeout=300  # 5 minutes timeout
     )
     application.add_handler(user_edit_conv)
+    
+    # Balance adjustment conversation handler
+    balance_adjust_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(start_balance_adjustment, pattern='^adjust_balance_start$')
+        ],
+        states={
+            BALANCE_USERNAME_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, process_balance_username)
+            ],
+            BALANCE_AMOUNT_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, process_balance_amount)
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(handle_admin_user_edit, pattern='^admin_user_edit$'),
+            CallbackQueryHandler(handle_admin_panel, pattern='^admin_panel$'),
+            CommandHandler('start', cancel_balance_adjustment),
+            CommandHandler('cancel', cancel_balance_adjustment)
+        ],
+        name="balance_adjustment_conversation",
+        per_user=True,
+        per_chat=True,
+        allow_reentry=True,
+        conversation_timeout=300  # 5 minutes timeout
+    )
+    application.add_handler(balance_adjust_conv)
     
     # Account Freeze Management handlers
     application.add_handler(CallbackQueryHandler(handle_account_freeze_panel, pattern='^admin_freeze_panel$'))
