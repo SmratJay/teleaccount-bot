@@ -1,0 +1,47 @@
+ubuntu@ip-172-31-42-97:~/teleaccount-bot$ sudo systemctl restart telebot
+ubuntu@ip-172-31-42-97:~/teleaccount-bot$ sudo journalctl -u telebot -f
+Oct 22 14:47:17 ip-172-31-42-97 telebot[29094]:            ^^^^^^^^^^^^^^^^^^^^^^^
+Oct 22 14:47:17 ip-172-31-42-97 telebot[29094]:   File "/usr/local/lib/python3.12/dist-packages/telegram/_bot.py", line 641, in _do_post
+Oct 22 14:47:17 ip-172-31-42-97 telebot[29094]:     return await request.post(
+Oct 22 14:47:17 ip-172-31-42-97 telebot[29094]:            ^^^^^^^^^^^^^^^^^^^
+Oct 22 14:47:17 ip-172-31-42-97 telebot[29094]:   File "/usr/local/lib/python3.12/dist-packages/telegram/request/_baserequest.py", line 200, in post
+Oct 22 14:47:17 ip-172-31-42-97 telebot[29094]:     result = await self._request_wrapper(
+Oct 22 14:47:17 ip-172-31-42-97 telebot[29094]:              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Oct 22 14:47:17 ip-172-31-42-97 telebot[29094]:   File "/usr/local/lib/python3.12/dist-packages/telegram/request/_baserequest.py", line 381, in _request_wrapper
+Oct 22 14:47:17 ip-172-31-42-97 telebot[29094]:     raise Conflict(message)
+Oct 22 14:47:17 ip-172-31-42-97 telebot[29094]: telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]: 2025-10-22 14:47:26,250 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8483671369:AAEOTZCDpCPiarfZHdb1Z5CFAZoMvdtmeKs/getUpdates "HTTP/1.1 409 Conflict"
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]: 2025-10-22 14:47:26,251 - telegram.ext.Updater - ERROR - Error while getting Updates: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]: 2025-10-22 14:47:26,251 - telegram.ext.Application - ERROR - No error handlers are registered, logging exception.
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]: Traceback (most recent call last):
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:   File "/usr/local/lib/python3.12/dist-packages/telegram/ext/_updater.py", line 688, in _network_loop_retry
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:     if not await action_cb():
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:            ^^^^^^^^^^^^^^^^^
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:   File "/usr/local/lib/python3.12/dist-packages/telegram/ext/_updater.py", line 384, in polling_action_cb
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:     raise exc
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:   File "/usr/local/lib/python3.12/dist-packages/telegram/ext/_updater.py", line 373, in polling_action_cb
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:     updates = await self.bot.get_updates(
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:   File "/usr/local/lib/python3.12/dist-packages/telegram/ext/_extbot.py", line 558, in get_updates
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:     updates = await super().get_updates(
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:   File "/usr/local/lib/python3.12/dist-packages/telegram/_bot.py", line 525, in decorator
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:     result = await func(self, *args, **kwargs)  # skipcq: PYL-E1102
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:   File "/usr/local/lib/python3.12/dist-packages/telegram/_bot.py", line 3584, in get_updates
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:     await self._post(
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:   File "/usr/local/lib/python3.12/dist-packages/telegram/_bot.py", line 613, in _post
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:     return await self._do_post(
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:            ^^^^^^^^^^^^^^^^^^^^
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:   File "/usr/local/lib/python3.12/dist-packages/telegram/ext/_extbot.py", line 340, in _do_post
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:     return await super()._do_post(
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:            ^^^^^^^^^^^^^^^^^^^^^^^
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:   File "/usr/local/lib/python3.12/dist-packages/telegram/_bot.py", line 641, in _do_post
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:     return await request.post(
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:            ^^^^^^^^^^^^^^^^^^^
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:   File "/usr/local/lib/python3.12/dist-packages/telegram/request/_baserequest.py", line 200, in post
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:     result = await self._request_wrapper(
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:   File "/usr/local/lib/python3.12/dist-packages/telegram/request/_baserequest.py", line 381, in _request_wrapper
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]:     raise Conflict(message)
+Oct 22 14:47:26 ip-172-31-42-97 telebot[29094]: telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
