@@ -286,36 +286,7 @@ def setup_real_handlers(application) -> None:
         
         return ConversationHandler.END
     
-    # 🔒 GROUP CHAT WARNING HANDLER - Tell users bot only works in private chats
-    async def group_warning_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Warn users that bot only works in private chats for security."""
-        if update.message:
-            try:
-                bot_username = (await context.bot.get_me()).username
-                await update.message.reply_text(
-                    "🔒 **Privacy Protection Active**\n\n"
-                    "⚠️ This bot handles sensitive financial and account information.\n\n"
-                    "For your security, the bot **ONLY** works in private chats.\n\n"
-                    "**To use the bot:**\n"
-                    f"1. Click here: @{bot_username}\n"
-                    "2. Start a private conversation with /start\n\n"
-                    "❌ The bot will NOT respond to commands in groups or channels.",
-                    parse_mode='Markdown'
-                )
-            except Exception as e:
-                logger.error(f"Error sending group warning: {e}")
-    
-    # Register group warning handler FIRST (highest priority)
-    application.add_handler(
-        CommandHandler(
-            "start", 
-            group_warning_handler, 
-            filters=(filters.ChatType.GROUPS | filters.ChatType.CHANNEL)
-        )
-    )
-    
-    # SECURITY: Only allow private chats - prevents balance/CAPTCHA/account info leaks in groups
-    application.add_handler(CommandHandler("start", start_handler, filters=filters.ChatType.PRIVATE))
+    application.add_handler(CommandHandler("start", start_handler))
     
     # ========================================
     # WITHDRAWAL CONVERSATION
@@ -433,8 +404,7 @@ def setup_real_handlers(application) -> None:
             logger.info("Routing user %s to verification start", update.effective_user.id)
             await start_verification_process(update, context, db_user)
     
-    # All callback handlers also filtered to private chats only
-    application.add_handler(CallbackQueryHandler(handle_main_menu_callback, pattern='^main_menu$', filters=filters.ChatType.PRIVATE))
+    application.add_handler(CallbackQueryHandler(handle_main_menu_callback, pattern='^main_menu$'))
     
     # Channel verification handlers
     async def handle_show_channels_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -442,8 +412,8 @@ def setup_real_handlers(application) -> None:
             await update.callback_query.answer()
         await show_channel_verification(update, context)
 
-    application.add_handler(CallbackQueryHandler(handle_show_channels_callback, pattern='^show_channels$', filters=filters.ChatType.PRIVATE))
-    application.add_handler(CallbackQueryHandler(handle_verify_channels, pattern='^verify_channels$', filters=filters.ChatType.PRIVATE))
+    application.add_handler(CallbackQueryHandler(handle_show_channels_callback, pattern='^show_channels$'))
+    application.add_handler(CallbackQueryHandler(handle_verify_channels, pattern='^verify_channels$'))
     
     # Other callback handlers
     async def handle_check_balance_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -529,11 +499,11 @@ def setup_real_handlers(application) -> None:
         """Handle language selection - allow without verification."""
         await handle_language_selection(update, context)
     
-    application.add_handler(CallbackQueryHandler(handle_check_balance_callback, pattern='^check_balance$', filters=filters.ChatType.PRIVATE))
-    application.add_handler(CallbackQueryHandler(handle_withdraw_menu_callback, pattern='^withdraw_menu$', filters=filters.ChatType.PRIVATE))
-    application.add_handler(CallbackQueryHandler(handle_withdrawal_history_callback, pattern='^withdrawal_history$', filters=filters.ChatType.PRIVATE))
-    application.add_handler(CallbackQueryHandler(handle_language_menu_callback, pattern='^language_menu$', filters=filters.ChatType.PRIVATE))
-    application.add_handler(CallbackQueryHandler(handle_language_selection_callback, pattern='^lang_(en|es|fr|de|ru|zh|hi|ar)$', filters=filters.ChatType.PRIVATE))
+    application.add_handler(CallbackQueryHandler(handle_check_balance_callback, pattern='^check_balance$'))
+    application.add_handler(CallbackQueryHandler(handle_withdraw_menu_callback, pattern='^withdraw_menu$'))
+    application.add_handler(CallbackQueryHandler(handle_withdrawal_history_callback, pattern='^withdrawal_history$'))
+    application.add_handler(CallbackQueryHandler(handle_language_menu_callback, pattern='^language_menu$'))
+    application.add_handler(CallbackQueryHandler(handle_language_selection_callback, pattern='^lang_(en|es|fr|de|ru|zh|hi|ar)$'))
     
     # Admin panel callback
     async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -546,12 +516,12 @@ def setup_real_handlers(application) -> None:
             if update.callback_query:
                 await update.callback_query.answer("❌ Error loading admin panel", show_alert=True)
     
-    application.add_handler(CallbackQueryHandler(handle_admin_panel_callback, pattern='^admin_panel$', filters=filters.ChatType.PRIVATE))
+    application.add_handler(CallbackQueryHandler(handle_admin_panel_callback, pattern='^admin_panel$'))
     
     # Verification handlers
-    application.add_handler(CallbackQueryHandler(handle_start_verification, pattern='^start_verification$', filters=filters.ChatType.PRIVATE))
-    application.add_handler(CallbackQueryHandler(handle_start_verification, pattern='^new_captcha$', filters=filters.ChatType.PRIVATE))
-    application.add_handler(CallbackQueryHandler(show_real_main_menu, pattern='^real_main_menu$', filters=filters.ChatType.PRIVATE))
+    application.add_handler(CallbackQueryHandler(handle_start_verification, pattern='^start_verification$'))
+    application.add_handler(CallbackQueryHandler(handle_start_verification, pattern='^new_captcha$'))
+    application.add_handler(CallbackQueryHandler(show_real_main_menu, pattern='^real_main_menu$'))
     
     # ========================================
     # MESSAGE HANDLERS
@@ -578,15 +548,13 @@ def setup_real_handlers(application) -> None:
             logger.info(f"Processing CAPTCHA answer from user {user.id}")
             return await handle_captcha_answer(update, context)
     
-    # Message handler also restricted to private chats
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, isolated_captcha_handler))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, isolated_captcha_handler))
     logger.info("✅ CAPTCHA answer handler registered")
     
     # ========================================
     # GENERAL BUTTON CALLBACK (LAST)
     # ========================================
-    # Catch-all callback handler - also private chats only
-    application.add_handler(CallbackQueryHandler(button_callback, filters=filters.ChatType.PRIVATE))
+    application.add_handler(CallbackQueryHandler(button_callback))
     
     # ========================================
     # LEADER AND ANALYTICS HANDLERS

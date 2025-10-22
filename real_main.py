@@ -6,9 +6,8 @@ import asyncio
 import logging
 import os
 from telegram import Update
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, filters
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 from handlers import setup_all_handlers  # Unified handler entry point
-from utils.chat_filters import private_chat_only  # Privacy protection
 
 # Configure detailed logging with Unicode support
 logging.basicConfig(
