@@ -246,9 +246,14 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
         logger.info(f"CAPTCHA verification for user {user.id}: answer='{user_answer}', expected='{correct_answer}'")
         
         if user_answer.lower() == correct_answer:
-            # CAPTCHA passed - update user status
+            # CAPTCHA passed - update user status with 7-day cache timestamp
+            from datetime import datetime, timezone
+            
             if db_user:
                 UserService.update_user(db, db_user.id, captcha_verified=True)
+                # Store CAPTCHA verification timestamp for 7-day cache
+                db_user.captcha_verified_at = datetime.now(timezone.utc)
+                logger.info(f"✅ CAPTCHA verified for user {user.id}, cached for 7 days")
             
             # Delete the captcha photo message if exists
             captcha_photo_message_id = context.user_data.get('captcha_photo_message_id')

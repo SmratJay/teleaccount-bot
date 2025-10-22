@@ -80,6 +80,7 @@ class User(Base):
     verification_step = Column(Integer, default=0)      # Current verification step (0=none, 1=captcha, 2=channels, 3=complete)
     channels_joined = Column(Boolean, default=False)
     verification_completed = Column(Boolean, default=False)
+    captcha_verified_at = Column(DateTime, nullable=True)  # 7-day CAPTCHA cache
     total_accounts_sold = Column(Integer, default=0)
     total_earnings = Column(Float, default=0.0)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

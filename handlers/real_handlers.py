@@ -247,15 +247,17 @@ def setup_real_handlers(application) -> None:
     # START COMMAND
     # ========================================
     async def start_handler(update, context):
-        """Start command - force CAPTCHA verification."""
+        """Start command - smart CAPTCHA verification with 7-day cache."""
         user = update.effective_user
-        logger.info(f"🚀 START: User {user.id} starting bot - forcing CAPTCHA")
+        logger.info(f"🚀 START: User {user.id} starting bot")
         
         context.user_data.clear()
         
         try:
             db = get_db_session()
             try:
+                from datetime import datetime, timedelta, timezone
+                
                 db_user = UserService.get_user_by_telegram_id(db, user.id)
                 if not db_user:
                     from database.models import User
@@ -268,8 +270,32 @@ def setup_real_handlers(application) -> None:
                     db.add(db_user)
                     db.commit()
                     db.refresh(db_user)
+                    logger.info(f"✨ New user created: {user.id}")
                 
-                # Force verification reset
+                # Check 7-day CAPTCHA cache
+                captcha_verified_at = getattr(db_user, 'captcha_verified_at', None)
+                if captcha_verified_at:
+                    # Check if CAPTCHA was verified within last 7 days
+                    days_since_verification = (datetime.now(timezone.utc) - captcha_verified_at).days
+                    
+                    if days_since_verification < 7:
+                        # CAPTCHA still valid! Skip verification, go to main menu
+                        logger.info(f"✅ CAPTCHA cache hit for user {user.id} ({days_since_verification} days old)")
+                        
+                        # Mark as verified
+                        db_user.captcha_completed = True
+                        db_user.verification_completed = True
+                        context.user_data['verified'] = True
+                        db.commit()
+                        
+                        # Show main menu directly
+                        await show_real_main_menu(update, context)
+                        return ConversationHandler.END
+                    else:
+                        logger.info(f"⏰ CAPTCHA expired for user {user.id} ({days_since_verification} days old)")
+                
+                # CAPTCHA not verified or expired - start verification
+                logger.info(f"🔒 Starting verification for user {user.id}")
                 db_user.captcha_completed = False
                 db_user.verification_completed = False
                 db_user.channels_joined = False

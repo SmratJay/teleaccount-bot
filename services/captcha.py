@@ -26,8 +26,9 @@ class CaptchaService:
         self.captcha_dir = "temp_captchas"
         os.makedirs(self.captcha_dir, exist_ok=True)
         
-        # Initialize image captcha generator (use default fonts - no custom fonts needed)
-        self.image_captcha = ImageCaptcha(width=280, height=90)
+        # Initialize image captcha generator - OPTIMIZED for speed
+        # Smaller dimensions = faster generation and faster for users to type
+        self.image_captcha = ImageCaptcha(width=200, height=70, fonts=None)
         
         # Removed math_questions and text_questions - only using visual captchas now
     
@@ -57,8 +58,8 @@ class CaptchaService:
     async def generate_visual_captcha(self) -> Dict[str, Any]:
         """Generate a visual image captcha - optimized for speed."""
         try:
-            # Generate random text for captcha (shorter = faster to type)
-            captcha_text = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
+            # Generate random text for captcha (4 chars = faster to type, still secure)
+            captcha_text = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
             
             # Generate captcha image (in memory - no disk I/O)
             image = self.image_captcha.generate(captcha_text)
