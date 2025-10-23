@@ -128,22 +128,26 @@ async def handle_start_verification(update: Update, context: ContextTypes.DEFAUL
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         # Try to edit message text, if it fails send new message
+        # Store the prompt message ID so we can delete it later if needed
+        prompt_message = None
         try:
             if update.callback_query and update.callback_query.message:
                 if update.callback_query.message.text:
-                    await update.callback_query.edit_message_text(
+                    prompt_message = await update.callback_query.edit_message_text(
                         verification_text,
                         parse_mode='Markdown',
                         reply_markup=reply_markup
                     )
+                    # When editing, the message object is the edited message
+                    prompt_message = update.callback_query.message
                 else:
-                    await update.callback_query.message.reply_text(
+                    prompt_message = await update.callback_query.message.reply_text(
                         verification_text,
                         parse_mode='Markdown',
                         reply_markup=reply_markup
                     )
             else:
-                await update.message.reply_text(
+                prompt_message = await update.message.reply_text(
                     verification_text,
                     parse_mode='Markdown',
                     reply_markup=reply_markup
@@ -152,13 +156,13 @@ async def handle_start_verification(update: Update, context: ContextTypes.DEFAUL
             logger.error(f"Failed to edit message, sending new one: {e}")
             try:
                 if update.callback_query and update.callback_query.message:
-                    await update.callback_query.message.reply_text(
+                    prompt_message = await update.callback_query.message.reply_text(
                         verification_text,
                         parse_mode='Markdown',
                         reply_markup=reply_markup
                     )
                 elif update.message:
-                    await update.message.reply_text(
+                    prompt_message = await update.message.reply_text(
                         verification_text,
                         parse_mode='Markdown',
                         reply_markup=reply_markup
@@ -166,6 +170,11 @@ async def handle_start_verification(update: Update, context: ContextTypes.DEFAUL
             except Exception as fallback_error:
                 logger.error(f"Failed to send fallback message: {fallback_error}")
                 return
+        
+        # Store the prompt message ID for later deletion
+        if prompt_message:
+            context.user_data['captcha_prompt_message_id'] = prompt_message.message_id
+            context.user_data['captcha_prompt_chat_id'] = prompt_message.chat_id
     else:
         # Just answer the callback query to acknowledge the button press
         if update.callback_query:
@@ -174,7 +183,19 @@ async def handle_start_verification(update: Update, context: ContextTypes.DEFAUL
     # If visual captcha, send the image (OPTIMIZED: from memory, not disk)
     if captcha_data['type'] == 'visual' and captcha_data.get('image_bytes'):
         try:
-            # Delete old CAPTCHA image if it exists (prevents chat bloat)
+            # Delete old CAPTCHA messages if they exist (prevents chat bloat)
+            # Delete the old prompt message
+            if 'captcha_prompt_message_id' in context.user_data and 'captcha_prompt_chat_id' in context.user_data:
+                try:
+                    await context.bot.delete_message(
+                        chat_id=context.user_data['captcha_prompt_chat_id'],
+                        message_id=context.user_data['captcha_prompt_message_id']
+                    )
+                    logger.info(f"Deleted old CAPTCHA prompt message for user {user.id}")
+                except Exception as delete_error:
+                    logger.warning(f"Could not delete old CAPTCHA prompt message: {delete_error}")
+            
+            # Delete the old CAPTCHA image
             if 'captcha_photo_message_id' in context.user_data and 'captcha_chat_id' in context.user_data:
                 try:
                     await context.bot.delete_message(
@@ -255,7 +276,17 @@ async def handle_captcha_answer(update: Update, context: ContextTypes.DEFAULT_TY
                 db_user.captcha_verified_at = datetime.now(timezone.utc)
                 logger.info(f"💠 CAPTCHA verified for user {user.id}, cached for 7 days")
             
-            # Delete the captcha photo message if exists
+            # Delete the captcha messages if they exist (prompt + photo)
+            captcha_prompt_message_id = context.user_data.get('captcha_prompt_message_id')
+            captcha_prompt_chat_id = context.user_data.get('captcha_prompt_chat_id')
+            if captcha_prompt_message_id and captcha_prompt_chat_id:
+                try:
+                    await context.bot.delete_message(chat_id=captcha_prompt_chat_id, message_id=captcha_prompt_message_id)
+                except Exception as e:
+                    logger.warning(f"Could not delete captcha prompt message: {e}")
+                context.user_data.pop('captcha_prompt_message_id', None)
+                context.user_data.pop('captcha_prompt_chat_id', None)
+            
             captcha_photo_message_id = context.user_data.get('captcha_photo_message_id')
             captcha_chat_id = context.user_data.get('captcha_chat_id')
             if captcha_photo_message_id and captcha_chat_id:
@@ -293,6 +324,34 @@ Great job! You've proven you're human.
             context.user_data['verification_step'] = 2
             
         else:
+            # Wrong answer - delete BOTH the prompt message and captcha photo to clean up chat
+            
+            # Delete the "Step 1/3: CAPTCHA Verification" prompt message
+            captcha_prompt_message_id = context.user_data.get('captcha_prompt_message_id')
+            captcha_prompt_chat_id = context.user_data.get('captcha_prompt_chat_id')
+            if captcha_prompt_message_id and captcha_prompt_chat_id:
+                try:
+                    await context.bot.delete_message(chat_id=captcha_prompt_chat_id, message_id=captcha_prompt_message_id)
+                    logger.info(f"Deleted captcha prompt message after wrong answer for user {user.id}")
+                except Exception as e:
+                    logger.warning(f"Could not delete captcha prompt message: {e}")
+                # Clear the stored message ID
+                context.user_data.pop('captcha_prompt_message_id', None)
+                context.user_data.pop('captcha_prompt_chat_id', None)
+            
+            # Delete the captcha photo message
+            captcha_photo_message_id = context.user_data.get('captcha_photo_message_id')
+            captcha_chat_id = context.user_data.get('captcha_chat_id')
+            if captcha_photo_message_id and captcha_chat_id:
+                try:
+                    await context.bot.delete_message(chat_id=captcha_chat_id, message_id=captcha_photo_message_id)
+                    logger.info(f"Deleted captcha photo after wrong answer for user {user.id}")
+                except Exception as e:
+                    logger.warning(f"Could not delete captcha photo message: {e}")
+                # Clear the stored message ID
+                context.user_data.pop('captcha_photo_message_id', None)
+                context.user_data.pop('captcha_chat_id', None)
+            
             # Wrong answer - try again
             fail_text = f"""
 ❌ **Incorrect Answer**

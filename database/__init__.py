@@ -32,12 +32,15 @@ else:
     DATABASE_URL = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
 
 # Create engine with connection pooling
+# pool_pre_ping: Test connections before use to prevent SSL/connection errors
+# pool_recycle=300: Recycle connections every 5 minutes (before cloud DB idle timeout)
 engine = create_engine(
     DATABASE_URL,
     poolclass=QueuePool,
     pool_size=10,
     max_overflow=20,
-    pool_recycle=3600,
+    pool_recycle=300,  # Recycle connections every 5 minutes (before cloud timeout)
+    pool_pre_ping=True,  # Test connection before use to catch dead connections
     echo=os.getenv('DEBUG', 'False').lower() == 'true'
 )
 

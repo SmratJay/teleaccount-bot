@@ -37,7 +37,17 @@ from handlers.withdrawal_flow import (
     handle_approve_withdrawal,
     handle_reject_withdrawal,
     handle_mark_paid,
-    handle_view_user_details
+    handle_view_user_details,
+    handle_withdraw_menu,
+    handle_withdraw_trx,
+    handle_withdraw_usdt,
+    handle_withdraw_binance,
+    handle_withdrawal_history,
+    handle_delete_withdrawal,
+    handle_withdrawal_details,
+    handle_withdrawal_confirmation,
+    WITHDRAW_DETAILS,
+    WITHDRAW_CONFIRM
 )
 
 
@@ -352,11 +362,7 @@ def setup_real_handlers(application) -> None:
     # ========================================
     # WITHDRAWAL CONVERSATION
     # ========================================
-    from handlers.main_handlers import (
-        handle_withdraw_menu, handle_withdraw_trx, handle_withdraw_usdt,
-        handle_withdraw_binance, handle_withdrawal_history, handle_withdrawal_details,
-        handle_withdrawal_confirmation, WITHDRAW_DETAILS, WITHDRAW_CONFIRM, handle_check_balance
-    )
+    from handlers.user_panel import handle_check_balance
     
     async def cancel_withdrawal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Cancel withdrawal conversation."""
@@ -565,6 +571,7 @@ def setup_real_handlers(application) -> None:
     application.add_handler(CallbackQueryHandler(handle_check_balance_callback, pattern='^check_balance$'))
     application.add_handler(CallbackQueryHandler(handle_withdraw_menu_callback, pattern='^withdraw_menu$'))
     application.add_handler(CallbackQueryHandler(handle_withdrawal_history_callback, pattern='^withdrawal_history$'))
+    application.add_handler(CallbackQueryHandler(handle_delete_withdrawal, pattern='^delete_withdrawal_'))
     application.add_handler(CallbackQueryHandler(handle_language_menu_callback, pattern='^language_menu$'))
     application.add_handler(CallbackQueryHandler(handle_language_selection_callback, pattern='^lang_(en|es|fr|de|ru|zh|hi|ar)$'))
     
